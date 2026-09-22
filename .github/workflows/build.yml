@@ -1,0 +1,113 @@
+name: Build
+
+# 只做一件事：验证代码能编译通过。
+# 不做发布、不碰 MC 帮助文档、不需要任何 secret ——
+# 上游 PCL 的 CI 会 clone PCL2Help 生成 Help.zip 并注入 CLIENT_ID 等 secrets，
+# 本改版已剥离 MC 功能，那套流程既不适用也不需要。
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build (${{ matrix.configuration }})
+    runs-on: windows-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Debug 与 Release 都验：Release 开了优化，可能暴露 Debug 下不报的问题
+        configuration: [Debug, Release]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+        with:
+          msbuild-architecture: x64
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          # PCLCS / MeloongCore 是 SDK 风格项目，需要 dotnet 来做 restore
+          dotnet-version: '8.0.x'
+
+      - name: Restore NuGet packages
+        # ⚠️ 这一步不能省。PCLCS / MeloongCore 是 SDK 风格项目，
+        #    不先 restore 的话 MSBuild 会报 NETSDK1004（找不到 project.assets.json）。
+        run: dotnet restore "Plain Craft Launcher 2.sln"
+
+      - name: Build
+        run: msbuild "Plain Craft Launcher 2.sln" -p:Configuration=${{ matrix.configuration }} -v:minimal -nologo
+
+      - name: Verify build output
+        shell: pwsh
+        run: |
+          # ⚠️ 不能只看"退出码 0"。MSBuild 有可能报 0 错误却跳过
+          #    CopyFilesToOutputDirectory，让 bin\ 里缺 exe.config / xml。
+          #    缺 exe.config 会导致程序集绑定重定向失效（Newtonsoft.Json 等），
+          #    表现为偶发的程序集版本不匹配 —— 很难查。
+          #    所以这里显式核对产物清单。
+          $bin = "Plain Craft Launcher 2\bin"
+          $required = @(
+            "Plain Craft Launcher 2.exe",
+            "Plain Craft Launcher 2.exe.config",
+            "PCLCS.dll",
+            "MeloongCore.dll",
+            "MeloongCore.Wpf.dll",
+            "Microsoft.Win32.Registry.dll"
+          )
+          $missing = @()
+          foreach ($f in $required) {
+            if (-not (Test-Path (Join-Path $bin $f))) { $missing += $f }
+          }
+          if ($missing.Count -gt 0) {
+            Write-Host "::error::构建产物缺失：$($missing -join ', ')"
+            Get-ChildItem $bin -File | Select-Object Name, Length | Format-Table -AutoSize
+            exit 1
+          }
+          Write-Host "产物清单核对通过："
+          Get-ChildItem $bin -File |
+            Where-Object { $_.Extension -in '.exe', '.dll', '.config' } |
+            Select-Object Name, @{N='KB';E={[math]::Round($_.Length/1KB,1)}} |
+            Format-Table -AutoSize
+
+      - name: Verify resources embedded in assembly
+        shell: pwsh
+        run: |
+          # Help.zip 等资源是被 .resx 用 ResXFileRef **嵌入程序集**的，
+          # 缺了会在编译期报 MSB3103。这里再确认一次它们真的进了 exe ——
+          # 因为文件"存在"和"被嵌进去"是两回事（比如被 .gitignore 挡掉后
+          # 本地有、CI 没有，就会静默地编出一个小一圈的 exe）。
+          $exe = "Plain Craft Launcher 2\bin\Plain Craft Launcher 2.exe"
+          $size = (Get-Item $exe).Length
+          Write-Host "exe 体积: $([math]::Round($size/1KB,1)) KB"
+          # 正常构建的 exe 在 6 MB 上下；如果明显偏小说明资源没嵌进去
+          if ($size -lt 4MB) {
+            Write-Host "::error::exe 体积异常偏小（$([math]::Round($size/1KB,1)) KB），可能有资源未嵌入"
+            exit 1
+          }
+          Write-Host "体积正常。"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PCL-DSH-${{ matrix.configuration }}
+          # 只传运行必需的文件，不要整个 bin（里面有 pdb，体积大且没用）
+          path: |
+            Plain Craft Launcher 2/bin/Plain Craft Launcher 2.exe
+            Plain Craft Launcher 2/bin/Plain Craft Launcher 2.exe.config
+            Plain Craft Launcher 2/bin/Plain Craft Launcher 2.xml
+            Plain Craft Launcher 2/bin/PCLCS.dll
+            Plain Craft Launcher 2/bin/MeloongCore.dll
+            Plain Craft Launcher 2/bin/MeloongCore.Wpf.dll
+            Plain Craft Launcher 2/bin/Microsoft.Win32.Registry.dll
+          if-no-files-found: error
+          retention-days: 14

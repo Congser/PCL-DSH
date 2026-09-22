@@ -366,3 +366,9 @@ Log*.txt
 # 交付物
 dist/
 *.zip
+
+# ── 例外：Resources 下的资源必须进仓库 ──
+# Help.zip 被 .resx 用 ResXFileRef 嵌入程序集，编译时**必须存在**
+# （缺了会报 MSB3103 "Resx 文件无效"），所以不能被 *.zip 挡掉。
+!Plain Craft Launcher 2/Resources/*.zip
+!Plain Craft Launcher 2/Resources/*.jar
