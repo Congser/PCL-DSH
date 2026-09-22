@@ -656,23 +656,30 @@ Public Module DshCredentials
     ''' </summary>
     ''' <param name="ApiKey">待验证的密钥。</param>
     ''' <param name="TimeoutMs">超时（毫秒）。</param>
+    ''' <param name="BaseUrl">
+    ''' 要验证的 API 基址；留空 = 官方地址。
+    ''' ⚠️ 自定义网关的密钥**必须**传它自己的地址 —— 拿官方端点去验一个
+    ''' 第三方网关的密钥必然 401，会误报"密钥被拒绝"。
+    ''' </param>
     ''' <returns>可用返回 Nothing；否则返回给用户看的错误说明。</returns>
     ''' <remarks>
     ''' 打的是 <c>GET /models</c> —— OpenAI 兼容协议里最便宜的鉴权端点，
     ''' 不消耗 token 配额，只验证密钥本身。
     ''' **阻塞调用**，请放在后台线程。
     ''' </remarks>
-    Public Function ProbeApiKey(ApiKey As String, Optional TimeoutMs As Integer = 15000) As String
+    Public Function ProbeApiKey(ApiKey As String, Optional TimeoutMs As Integer = 15000,
+                                Optional BaseUrl As String = Nothing) As String
         Dim shapeProblem As String = ValidateApiKeyShape(ApiKey)
         If shapeProblem IsNot Nothing Then Return shapeProblem
 
+        Dim baseAddr As String = If(String.IsNullOrWhiteSpace(BaseUrl), DeepSeekApiBase, BaseUrl.TrimEnd("/"c))
         Try
             Using handler As New HttpClientHandler With {.AllowAutoRedirect = False}
                 Using client As New HttpClient(handler) With {.Timeout = TimeSpan.FromMilliseconds(TimeoutMs)}
                     client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", "Bearer " & ApiKey.Trim())
                     client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "PCL-DSH/1.0")
 
-                    Using resp = client.GetAsync(DeepSeekApiBase & "/models").GetAwaiter().GetResult()
+                    Using resp = client.GetAsync(baseAddr & "/models").GetAwaiter().GetResult()
                         Dim code As Integer = CInt(resp.StatusCode)
                         If code = 200 Then
                             Logger.Info("DSH：API Key 验证通过")
@@ -1081,7 +1088,7 @@ Public Module DshCredentials
             Directory.CreateDirectory(dir)
         End If
 
-        Dim tmp As String = Path & ".pcltmp"
+        Dim tmp As String = DshMigrate.DshAtomicTempPath(Path)
         Dim utf8NoBom As New UTF8Encoding(False)
 
         '统一换行符，并保证文件以换行结尾

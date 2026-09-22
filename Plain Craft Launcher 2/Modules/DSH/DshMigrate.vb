@@ -673,6 +673,30 @@ Public Module DshMigrate
 
 #Region "底层复制 / 删除"
 
+    ''' <summary>
+    ''' 给「原子写入」生成一个**唯一**的临时文件路径。
+    ''' </summary>
+    ''' <param name="Target">最终要写入的目标文件。</param>
+    ''' <remarks>
+    ''' ⭐ 为什么不能直接用 <c>Target &amp; ".pcltmp"</c>（全项目原来都是这么写的）：
+    '''
+    ''' 原子写入的模式是「写临时文件 → <c>File.Replace(tmp, target)</c>」。
+    ''' 临时文件名固定时，两个线程同时写同一个目标会互相踩：
+    ''' <list type="bullet">
+    ''' <item>线程 A 写完 tmp → 线程 B **覆盖** tmp → A 执行 Replace，
+    '''       成功但**写入的是 B 的内容**（静默数据错乱，最难查）</item>
+    ''' <item>或者 A 先 Replace 掉 tmp → B 的 Replace 抛 <c>FileNotFoundException</c></item>
+    ''' </list>
+    ''' 加了随机后缀后，每个写入者有自己的临时文件，互不干扰。
+    '''
+    ''' 实际并发概率不高（这些写入大多在 UI 线程触发），但原子写入的意义
+    ''' 本来就是「防意外」—— 用固定 tmp 名等于把原子性打了折。
+    ''' </remarks>
+    Public Function DshAtomicTempPath(Target As String) As String
+        If String.IsNullOrWhiteSpace(Target) Then Return Target
+        Return Target & "." & Guid.NewGuid().ToString("N").Substring(0, 8) & ".pcltmp"
+    End Function
+
     ''' <summary>复制统计结果。</summary>
     Public Class CopyStats
         Public Property FileCount As Integer = 0
@@ -1075,6 +1099,15 @@ Public Module DshMigrate
     End Function
 
     ''' <summary>统计目录总字节数。</summary>
+    ''' <summary>统计目录占用的总字节数。</summary>
+    ''' <remarks>
+    ''' ⚠️ **不跟随重解析点**（与 <see cref="CountFiles"/> 同理）。
+    ''' <c>Directory.GetDirectories</c> 会把符号链接 / junction 也列出来，
+    ''' 若直接 <c>stack.Push</c> 就会递归进链接目标 —— 于是同一份文件被
+    ''' 重复计入（pnpm 的 <c>node_modules</c> 是链接图，一个包常被多个链接指到）。
+    ''' 结果就是**体积虚高**，而这个数字会显示给用户（快照占用、迁移预览），
+    ''' 虚高会让人误以为磁盘要被占满。
+    ''' </remarks>
     Public Function MeasureDirectorySize(Root As String) As Long
         If Not Directory.Exists(Root) Then Return 0L
         Dim total As Long = 0
@@ -1085,6 +1118,9 @@ Public Module DshMigrate
             Try
                 For Each f In Directory.GetFiles(dir)
                     Try
+                        ' 链接文件也要跳过 —— 它的 Length 是链接本身的大小，
+                        ' 但更重要的是不该把它当普通文件算
+                        If (New FileInfo(f).Attributes And FileAttributes.ReparsePoint) <> 0 Then Continue For
                         total += New FileInfo(f).Length
                     Catch
                         ' 单个文件读不到就跳过
@@ -1095,7 +1131,15 @@ Public Module DshMigrate
             End Try
             Try
                 For Each subDir In Directory.GetDirectories(dir)
-                    stack.Push(subDir)
+                    ' ⭐ 不跟随重解析点（见上方 remarks）
+                    Dim isLink As Boolean = False
+                    Try
+                        isLink = (New DirectoryInfo(subDir).Attributes And FileAttributes.ReparsePoint) <> 0
+                    Catch ex As Exception
+                        ' 读不到属性时保守跳过 —— 宁可少算，也不要虚高
+                        isLink = True
+                    End Try
+                    If Not isLink Then stack.Push(subDir)
                 Next
             Catch ex As Exception
                 Logger.Warn($"DSH：统计子目录失败（{dir}）：{ex.Message}")

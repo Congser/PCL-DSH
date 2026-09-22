@@ -612,7 +612,59 @@ Public Class PageDSHOnline
         Catch ex As Exception
             Logger.Error(ex, "DSH：为实例设置密钥失败")
             Hint($"设置失败：{ex.Message}", HintType.Red)
+            Return
         End Try
+
+        ' ⭐ 密钥已保存，顺手验一次是否真的可用。
+        ' 为什么值得做：形状校验只能看出"像不像密钥"，看不出"能不能用" ——
+        ' 密钥被吊销、额度用尽、复制时少了几个字符，都要等启动 dsh 之后
+        ' 才在对话里报错，那时用户已经绕了一圈。
+        ' 打的是 GET /models（最便宜的鉴权端点，不消耗 token）。
+        ' 失败**不回滚**保存 —— 用户可能就是想先存着（比如换了网络再用），
+        ' 只提示问题让他自己判断。
+        ProbeKeyInBackground(inst, keyRef, input.Trim(), provider)
+    End Sub
+
+    ''' <summary>
+    ''' 后台验证密钥可用性，结果用提示条告知（不阻塞界面）。
+    ''' </summary>
+    ''' <remarks>
+    ''' ⚠️ <see cref="DshCredentials.ProbeApiKey"/> 是**阻塞**调用（内部
+    ''' <c>GetAwaiter().GetResult()</c>），**绝不能**在 UI 线程上调 ——
+    ''' 那会死锁。所以这里包一层 <c>RunInNewThread</c>。
+    ''' </remarks>
+    Private Sub ProbeKeyInBackground(inst As DshInstance, keyRef As String, Key As String,
+                                     provider As DshApiConfig.DshProvider)
+        If inst Is Nothing OrElse String.IsNullOrWhiteSpace(Key) Then Return
+        ' 自定义网关要打它自己的地址 —— 拿官方端点去验必然 401，会误报
+        Dim baseUrl As String = Nothing
+        If provider IsNot Nothing AndAlso Not provider.IsOfficial Then
+            baseUrl = provider.BaseUrl
+        End If
+        RunInNewThread(
+            Sub()
+                Dim problem As String = Nothing
+                Try
+                    problem = DshCredentials.ProbeApiKey(Key, 12000, baseUrl)
+                Catch ex As Exception
+                    ' 探测本身出错不算问题 —— 网络不通时不该报"密钥无效"
+                    Logger.Warn(ex, "DSH：验证 API Key 时出错（已忽略）")
+                    Return
+                End Try
+
+                RunInUi(
+                    Sub()
+                        Try
+                            If problem Is Nothing Then
+                                Hint("密钥已验证通过。", HintType.Green)
+                            Else
+                                Hint($"密钥已保存，但验证未通过：{problem}", HintType.Red)
+                            End If
+                        Catch ex As Exception
+                            Logger.Warn(ex, "DSH：展示密钥验证结果失败（可忽略）")
+                        End Try
+                    End Sub)
+            End Sub, "DSH 验证 API Key")
     End Sub
 
     Private Sub RestoreSharedKey(inst As DshInstance)

@@ -1281,7 +1281,7 @@ Public Module DshNetTool
             root("targets") = tArr
 
             Dim path As String = ConfigFile
-            Dim tmp As String = path & ".pcltmp"
+            Dim tmp As String = DshMigrate.DshAtomicTempPath(path)
             File.WriteAllText(tmp, root.ToString(Newtonsoft.Json.Formatting.Indented), New UTF8Encoding(False))
 
             If File.Exists(path) Then

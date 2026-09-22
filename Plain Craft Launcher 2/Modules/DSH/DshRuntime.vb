@@ -156,8 +156,20 @@ Public Module DshRuntime
         Return Nothing
     End Function
 
-    ''' <summary>本进程环境是否已经灌入过该 <see cref="ProcessStartInfo"/>。</summary>
-    Private ReadOnly _SeededInstances As New HashSet(Of ProcessStartInfo)
+    ''' <summary>
+    ''' 记录哪些 <see cref="ProcessStartInfo"/> 已经灌过环境（幂等用）。
+    ''' </summary>
+    ''' <remarks>
+    ''' ⚠️ 用 <see cref="ConditionalWeakTable(Of TKey, TValue)"/> 而不是
+    ''' <c>HashSet(Of ProcessStartInfo)</c>：
+    ''' 后者持有**强引用**，而这里的 key 是每次启动/装插件时 new 出来的局部
+    ''' <c>ProcessStartInfo</c> —— 用完就没人引用了，但 HashSet 会把它一直钉住，
+    ''' 永久阻止 GC（虽然单个对象只有几百字节、操作也低频，但这是纯粹的浪费，
+    ''' 而且没有上限）。
+    ''' <c>ConditionalWeakTable</c> 是弱引用表：key 一旦没人引用就自动移除条目，
+    ''' 语义完全一致而零泄漏。
+    ''' </remarks>
+    Private ReadOnly _SeededInstances As New Runtime.CompilerServices.ConditionalWeakTable(Of ProcessStartInfo, Object)
 
     ''' <summary>
     ''' 让 <see cref="ProcessStartInfo.Environment"/> 完成一次安全初始化。
@@ -179,23 +191,30 @@ Public Module DshRuntime
     ''' 因此这里显式做一次「预热」，并把原因写清楚，避免后人误删。
     ''' </summary>
     Private Sub PrimeEnvironment(Psi As ProcessStartInfo)
-        If _PrimedInstances.Contains(Psi) Then Return
+        If _PrimedInstances.TryGetValue(Psi, Nothing) Then Return
         Try
             '只读一次 Count 就会触发惰性物化；
             '在污染环境下这里会抛，但副作用正是我们想要的「重置」
             Dim dummy As Integer = Psi.EnvironmentVariables.Count
         Catch ex As ArgumentException
             '预期内：大小写变体撞键。吞掉即可，内部状态已被重置。
-            Logger.Info("DSH：进程环境存在大小写重复变量，已重置子进程环境状态" &
-                        $"（{ex.Message}）")
+            ' ⚠️ 措辞刻意写成"已完成初始化"而不是"存在重复变量" ——
+            '    这在**每次从 bash / git-bash 启动 PCL** 时都会发生，
+            '    是正常现象。原来写成「存在大小写重复变量」会让日志里每次都
+            '    出现一条看着像错误的记录，反而掩盖真正的问题。
+            '    （PCL 的 Logger 没有 Debug 级别，只能用 Info，所以靠措辞区分。）
+            Logger.Info("DSH：子进程环境已完成初始化（含大小写变体归一）")
         Catch ex As Exception
             Logger.Warn(ex, "DSH：预热子进程环境时出现意外异常")
         End Try
-        _PrimedInstances.Add(Psi)
+        _PrimedInstances.Add(Psi, True)
     End Sub
 
-    ''' <summary>已经预热过的实例，避免重复触发。</summary>
-    Private ReadOnly _PrimedInstances As New HashSet(Of ProcessStartInfo)
+    ''' <summary>
+    ''' 已经预热过的实例，避免重复触发。
+    ''' </summary>
+    ''' <remarks>同样用弱引用表，理由见 <see cref="_SeededInstances"/> 的注释。</remarks>
+    Private ReadOnly _PrimedInstances As New Runtime.CompilerServices.ConditionalWeakTable(Of ProcessStartInfo, Object)
 
     ''' <summary>
     ''' 把当前进程的环境变量灌入子进程环境。
@@ -209,7 +228,7 @@ Public Module DshRuntime
     Public Sub SeedEnvironment(Psi As ProcessStartInfo)
         '必须先预热，否则下面的写入会因 Environment 处于损坏状态而全部失败
         PrimeEnvironment(Psi)
-        If _SeededInstances.Contains(Psi) Then Return
+        If _SeededInstances.TryGetValue(Psi, Nothing) Then Return
 
         Dim count As Integer = 0
         For Each entry As System.Collections.DictionaryEntry In Environment.GetEnvironmentVariables()
@@ -223,7 +242,7 @@ Public Module DshRuntime
                 Logger.Warn(ex, $"DSH：灌入环境变量失败（{key}）")
             End Try
         Next
-        _SeededInstances.Add(Psi)
+        _SeededInstances.Add(Psi, True)
         Logger.Info($"DSH：已灌入 {count} 个环境变量到子进程环境")
     End Sub
 

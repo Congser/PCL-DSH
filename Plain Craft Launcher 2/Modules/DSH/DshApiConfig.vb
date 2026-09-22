@@ -220,7 +220,7 @@ Public Module DshApiConfig
             root("providers") = arr
 
             Dim path As String = ProvidersFile
-            Dim tmp As String = path & ".pcltmp"
+            Dim tmp As String = DshMigrate.DshAtomicTempPath(path)
             File.WriteAllText(tmp, root.ToString(Newtonsoft.Json.Formatting.Indented), New UTF8Encoding(False))
 
             If File.Exists(path) Then

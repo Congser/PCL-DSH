@@ -147,7 +147,7 @@ Public Module DshInstaller
     Public Function RepairInstallPrivateNode(Optional Progress As DshInstallProgressHandler = Nothing) As String
         ModDSH.DshEnsureDirectories()
         Try
-            If Directory.Exists(ModDSH.DshNodeDir) Then Directory.Delete(ModDSH.DshNodeDir, True)
+            If Directory.Exists(ModDSH.DshNodeDir) Then DshMigrate.DeleteDirectoryRobust(ModDSH.DshNodeDir)
         Catch ex As Exception
             Logger.Warn(ex, "DSH：清除旧私有 Node 目录失败，解压步骤可能会失败")
         End Try
@@ -169,7 +169,7 @@ Public Module DshInstaller
     Public Function RepairInstallPrivatePnpm(Optional Progress As DshInstallProgressHandler = Nothing) As String
         ModDSH.DshEnsureDirectories()
         Try
-            If Directory.Exists(ModDSH.DshPnpmDir) Then Directory.Delete(ModDSH.DshPnpmDir, True)
+            If Directory.Exists(ModDSH.DshPnpmDir) Then DshMigrate.DeleteDirectoryRobust(ModDSH.DshPnpmDir)
         Catch ex As Exception
             Logger.Warn(ex, "DSH：清除旧私有 pnpm 目录失败，解压步骤可能会失败")
         End Try
@@ -201,19 +201,19 @@ Public Module DshInstaller
 
         Report(Progress, DshInstallStage.Extracting, "正在解压 Node.js…", -1)
         Dim extractDir As String = Path.Combine(ModDSH.DshRuntimeDir, "node-temp")
-        If Directory.Exists(extractDir) Then Directory.Delete(extractDir, True)
+        If Directory.Exists(extractDir) Then DshMigrate.DeleteDirectoryRobust(extractDir)
         Directory.CreateDirectory(extractDir)
         ExpandZipSafe(zipPath, extractDir)
 
         ' 官方 zip 内部有一层 `node-vX.Y.Z-win-x64\` 目录，需要把内容提上来
         Dim inner = Directory.GetDirectories(extractDir).FirstOrDefault()
         Dim sourceDir As String = If(inner, extractDir)
-        If Directory.Exists(ModDSH.DshNodeDir) Then Directory.Delete(ModDSH.DshNodeDir, True)
+        If Directory.Exists(ModDSH.DshNodeDir) Then DshMigrate.DeleteDirectoryRobust(ModDSH.DshNodeDir)
         Directory.CreateDirectory(ModDSH.DshNodeDir)
         CopyDirectory(sourceDir, ModDSH.DshNodeDir)
 
         Try
-            Directory.Delete(extractDir, True)
+            DshMigrate.DeleteDirectoryRobust(extractDir)
             File.Delete(zipPath)
         Catch ex As Exception
             Logger.Warn($"DSH：清理 Node 安装临时文件失败（可忽略）：{ex.Message}")
@@ -268,7 +268,7 @@ Public Module DshInstaller
         ' 3. 解压（tgz → tar → 文件）
         Report(Progress, DshInstallStage.Extracting, "正在解压 pnpm…", -1)
         Dim outDir As String = Path.Combine(ModDSH.DshRuntimeDir, "pnpm-temp")
-        If Directory.Exists(outDir) Then Directory.Delete(outDir, True)
+        If Directory.Exists(outDir) Then DshMigrate.DeleteDirectoryRobust(outDir)
         Directory.CreateDirectory(outDir)
         ExtractTarGzSafe(tgzPath, outDir)
 
@@ -276,12 +276,12 @@ Public Module DshInstaller
         Dim pkgRoot = Path.Combine(outDir, "package")
         Dim sourceRoot As String = If(Directory.Exists(pkgRoot), pkgRoot, outDir)
 
-        If Directory.Exists(ModDSH.DshPnpmDir) Then Directory.Delete(ModDSH.DshPnpmDir, True)
+        If Directory.Exists(ModDSH.DshPnpmDir) Then DshMigrate.DeleteDirectoryRobust(ModDSH.DshPnpmDir)
         Directory.CreateDirectory(ModDSH.DshPnpmDir)
         CopyDirectory(sourceRoot, ModDSH.DshPnpmDir)
 
         Try
-            Directory.Delete(outDir, True)
+            DshMigrate.DeleteDirectoryRobust(outDir)
             File.Delete(tgzPath)
         Catch ex As Exception
             Logger.Warn($"DSH：清理 pnpm 安装临时文件失败（可忽略）：{ex.Message}")

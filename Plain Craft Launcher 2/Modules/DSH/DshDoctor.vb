@@ -455,16 +455,13 @@ Public Module DshDoctor
 
             Dim sizeText As String = "未知大小"
             Try
-                Dim files = Directory.GetFiles(legacy, "*", SearchOption.AllDirectories)
-                Dim total As Long = 0
-                For Each f In files
-                    Try
-                        total += New FileInfo(f).Length
-                    Catch
-                        ' 单个文件读不到就跳过
-                    End Try
-                Next
-                sizeText = $"{files.Length} 个文件，共 {FormatBytes(total)}"
+                ' ⚠️ 不用 Directory.GetFiles(..., AllDirectories)：
+                '    那个 API 遇到任何一层没权限就整体抛异常（体积会显示成"未知"），
+                '    而且会跟随符号链接导致虚高。
+                '    这里复用全项目统一的逐层遍历实现（CountFiles 明确不跟随链接）。
+                Dim fileCount As Integer = DshMigrate.CountFiles(legacy)
+                Dim total As Long = DshMigrate.MeasureDirectorySize(legacy)
+                sizeText = $"{fileCount} 个文件，共 {FormatBytes(total)}"
             Catch ex As Exception
                 Logger.Warn(ex, "DSH：统计遗留目录大小失败")
             End Try
@@ -607,7 +604,7 @@ Public Module DshDoctor
                 Dim ver = DshRuntime.ReadNodeVersionVerbose(existing)
                 If Not DshRuntime.NodeVersionSatisfies(DshRuntime.ParseNodeVersion(ver)) Then
                     Logger.Info($"DSH：清理版本不达标的私有 Node（{If(ver, "未知版本")}）")
-                    Directory.Delete(ModDSH.DshNodeDir, True)
+                    DshMigrate.DeleteDirectoryRobust(ModDSH.DshNodeDir)
                 End If
             End If
         Catch ex As Exception
@@ -629,7 +626,7 @@ Public Module DshDoctor
         ' 文件在但执行失败 → 先删干净再装，否则会出现"看起来还在、其实还是坏的"
         Try
             If Directory.Exists(ModDSH.DshPnpmDir) Then
-                Directory.Delete(ModDSH.DshPnpmDir, True)
+                DshMigrate.DeleteDirectoryRobust(ModDSH.DshPnpmDir)
                 Logger.Info("DSH：已清除损坏的私有 pnpm 目录")
             End If
         Catch ex As Exception
@@ -652,7 +649,7 @@ Public Module DshDoctor
         Dim nmDir = Path.Combine(ModDSH.DshInstallDir, "node_modules")
         Try
             If Directory.Exists(nmDir) Then
-                Directory.Delete(nmDir, True)
+                DshMigrate.DeleteDirectoryRobust(nmDir)
                 Logger.Info("DSH：已清除残缺的 node_modules，将重新安装")
             End If
         Catch ex As Exception
@@ -738,7 +735,7 @@ Public Module DshDoctor
             Return
         End If
         Try
-            Directory.Delete(legacy, True)
+            DshMigrate.DeleteDirectoryRobust(legacy)
             Logger.Info($"DSH：已删除旧版遗留目录 → {legacy}")
             Outcome.Success = True
             Outcome.Message = $"已删除旧版遗留目录：{legacy}"

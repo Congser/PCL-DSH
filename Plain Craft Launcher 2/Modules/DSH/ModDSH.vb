@@ -787,7 +787,7 @@ Public Module ModDSH
             root("instances") = arr
 
             Dim path As String = DshInstancesFile
-            Dim tmp As String = path & ".pcltmp"
+            Dim tmp As String = DshMigrate.DshAtomicTempPath(path)
             File.WriteAllText(tmp, root.ToString(Newtonsoft.Json.Formatting.Indented), New UTF8Encoding(False))
 
             If File.Exists(path) Then

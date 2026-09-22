@@ -623,6 +623,18 @@ Public Module DshProfileSync
     End Function
 
     ''' <summary>统计某个数据项的体积（字节）；失败返回 0。</summary>
+    ''' <summary>统计某个待同步条目的体积（只用于界面展示）。</summary>
+    ''' <remarks>
+    ''' ⚠️ 刻意**不用** <c>Directory.GetFiles(..., SearchOption.AllDirectories)</c>：
+    ''' <list type="bullet">
+    ''' <item>那个 API **遇到任何一层没权限就整体抛异常**，
+    '''       于是整个体积显示变成 0（"0 字节"会让用户以为没东西可搬）</item>
+    ''' <item>它**会跟随符号链接** —— 而 pnpm 的 <c>node_modules</c> 是链接图，
+    '''       同一份文件会被重复计入，体积虚高</item>
+    ''' </list>
+    ''' 改为复用 <see cref="DshMigrate.MeasureDirectorySize"/>（逐层遍历 +
+    ''' 不跟随链接），语义与全项目一致。
+    ''' </remarks>
     Private Function DshSyncMeasure(Home As String, EntryName As String) As Long
         Try
             Dim target As String = Path.Combine(Home, EntryName)
@@ -630,15 +642,7 @@ Public Module DshProfileSync
                 Return New FileInfo(target).Length
             End If
             If Not Directory.Exists(target) Then Return 0L
-            Dim total As Long = 0L
-            For Each f As String In Directory.GetFiles(target, "*", SearchOption.AllDirectories)
-                Try
-                    total += New FileInfo(f).Length
-                Catch
-                    ' 单个文件读不到就跳过，只是个体积展示
-                End Try
-            Next
-            Return total
+            Return DshMigrate.MeasureDirectorySize(target)
         Catch ex As Exception
             Logger.Warn(ex, $"DSH：统计 {EntryName} 体积失败")
             Return 0L
@@ -739,7 +743,7 @@ Public Module DshProfileSync
                         ' （会话表是"全量快照"语义，合并两边只会得到一份谁也不认识的数据）
                         If Directory.Exists(dst) Then
                             Try
-                                Directory.Delete(dst, True)
+                                DshMigrate.DeleteDirectoryRobust(dst)
                             Catch ex As Exception
                                 Logger.Warn(ex, $"DSH：清理目标 {entryName} 失败，改为覆盖复制")
                             End Try
@@ -900,7 +904,7 @@ Public Module DshProfileSync
 
         If added = 0 Then Return 0
 
-        Dim temp As String = pkgPath & ".pcltmp"
+        Dim temp As String = DshMigrate.DshAtomicTempPath(pkgPath)
         File.WriteAllText(temp, root.ToString(Newtonsoft.Json.Formatting.Indented), New UTF8Encoding(False))
         If File.Exists(pkgPath) Then File.Delete(pkgPath)
         File.Move(temp, pkgPath)

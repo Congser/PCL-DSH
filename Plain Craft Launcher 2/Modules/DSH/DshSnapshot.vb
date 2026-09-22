@@ -98,6 +98,47 @@ Public Module DshSnapshot
 
 #Region "路径"
 
+    ''' <summary>
+    ''' 判断快照里的一个条目名是否安全（可以拼进实例目录路径）。
+    ''' </summary>
+    ''' <remarks>
+    ''' 快照目录是用户可以手工改的，而恢复操作会把条目**写进实例数据目录**，
+    ''' 所以必须把名字当**不可信输入**校验。规则：
+    ''' <list type="bullet">
+    ''' <item>非空、长度合理</item>
+    ''' <item>不含路径分隔符（<c>\</c> <c>/</c>）、冒号、通配符</item>
+    ''' <item>不是 <c>.</c> / <c>..</c></item>
+    ''' <item>不以点开头（隐藏项也一并挡掉 —— dsh 的数据条目里没有这类）</item>
+    ''' <item>不是 Windows 保留设备名（<c>CON</c> / <c>PRN</c> / <c>AUX</c> / <c>NUL</c> /
+    '''       <c>COM1-9</c> / <c>LPT1-9</c>）—— 这些在 Win32 里会被当成设备，</item>
+    ''' </list>
+    ''' 对比：<see cref="DshSnapshotDelete"/> 已有越界检查，恢复路径原来缺这一道。
+    ''' </remarks>
+    Private Function IsSafeSnapshotEntryName(Name As String) As Boolean
+        If String.IsNullOrWhiteSpace(Name) Then Return False
+        Dim t As String = Name.Trim()
+        If t.Length = 0 OrElse t.Length > 128 Then Return False
+        ' 单层名字：不能含分隔符或路径相关字符
+        If t.Contains(SnapshotBS) OrElse t.Contains("/"c) OrElse t.Contains(":"c) Then Return False
+        If t.Contains("*"c) OrElse t.Contains("?"c) OrElse t.Contains(""""c) Then Return False
+        If t.Contains("<"c) OrElse t.Contains(">"c) OrElse t.Contains("|"c) Then Return False
+        ' 不能是 . / ..
+        If t = "." OrElse t = ".." Then Return False
+        ' 不以点开头（挡掉 .credentials.yaml 之类的隐藏项与相对路径残留）
+        If t.StartsWith("."c) Then Return False
+        ' Windows 保留设备名（不区分大小写；带扩展名也算，如 CON.txt）
+        Dim stem As String = t
+        Dim dot As Integer = stem.IndexOf("."c)
+        If dot > 0 Then stem = stem.Substring(0, dot)
+        Dim reserved As String() = {"CON", "PRN", "AUX", "NUL",
+                                    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+                                    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"}
+        For Each r As String In reserved
+            If String.Equals(stem, r, StringComparison.OrdinalIgnoreCase) Then Return False
+        Next
+        Return True
+    End Function
+
     ''' <summary>快照根目录（<c>&lt;数据根&gt;\snapshots\</c>）。</summary>
     Public Function DshSnapshotRoot() As String
         Return ModDSH.DshRoot & SnapshotFolderName & SnapshotBS
@@ -349,9 +390,33 @@ Public Module DshSnapshot
             Report(Progress, "恢复", "正在恢复数据……", 0.3)
             Dim restored As Integer = 0
             Dim failures As New List(Of String)
+            ' ⚠️ 纵深防御：只接受**单层、安全**的条目名。
+            '   快照目录（<数据根>\snapshots\inst_xxx\<快照id>\data\）是用户可以手工改的，
+            '   而这里的结果会写进实例数据目录 —— 万一里面放了个奇怪的名字，
+            '   就会写到实例目录之外。对比：DshSnapshotDelete 有越界检查，这里原来没有。
+            Dim homeAbs As String = Path.GetFullPath(Instance.HomeDir).TrimEnd(SnapshotBS)
             For Each entryPath As String In Directory.GetFileSystemEntries(payloadDir)
                 Dim entryName As String = Path.GetFileName(entryPath)
+                If Not IsSafeSnapshotEntryName(entryName) Then
+                    Logger.Warn($"DSH：跳过可疑的快照条目：{entryName}")
+                    failures.Add($"{entryName}：条目名不合法，已跳过")
+                    Continue For
+                End If
                 Dim dst As String = Path.Combine(Instance.HomeDir, entryName)
+                ' 再确认一次：解析后的目标必须真的在实例目录之下
+                Try
+                    Dim dstAbs As String = Path.GetFullPath(dst).TrimEnd(SnapshotBS)
+                    If Not String.Equals(dstAbs, homeAbs, StringComparison.OrdinalIgnoreCase) AndAlso
+                       Not dstAbs.StartsWith(homeAbs & SnapshotBS, StringComparison.OrdinalIgnoreCase) Then
+                        Logger.Error($"DSH：拒绝恢复越界条目：{dstAbs}")
+                        failures.Add($"{entryName}：路径越界，已跳过")
+                        Continue For
+                    End If
+                Catch ex As Exception
+                    Logger.Error(ex, $"DSH：校验恢复目标路径失败：{dst}")
+                    failures.Add($"{entryName}：路径校验失败，已跳过")
+                    Continue For
+                End Try
                 Try
                     If File.Exists(entryPath) Then
                         File.Copy(entryPath, dst, True)

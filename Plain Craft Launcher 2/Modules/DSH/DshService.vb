@@ -368,6 +368,9 @@ Public Module DshService
                     "最近的输出：" & vbCrLf & Instance.GetRecentOutput()
                 Instance.LastError = $"进程已退出（代码 {proc.ExitCode}）"
                 Instance.State = ModDSH.DshState.Failed
+                ' ⭐ 必须清理：进程虽已退出，但事件处理器还挂着、Process 对象还没释放。
+                '    不清理的话下次启动时 Instance.Process 会指向一个已死的旧对象。
+                CleanupProcess(Instance, proc, KillIfAlive:=False)
                 Throw New InvalidOperationException(reason)
             End If
 
@@ -376,6 +379,15 @@ Public Module DshService
                 "最近的输出：" & vbCrLf & Instance.GetRecentOutput()
             Instance.LastError = $"等待就绪超时（{ModDSH.DshStartupTimeoutMs \ 1000} 秒）"
             Instance.State = ModDSH.DshState.Failed
+            ' ⭐⭐ 关键修复：超时这一刻**进程往往还活着**（只是没打印就绪 URL）。
+            '     原来这里直接 Throw，什么都不清理 —— 结果是：
+            '     · dsh 进程继续在后台跑，还占着端口
+            '     · Instance.Process 仍指着它，事件处理器还挂着
+            '     · 用户看到"启动失败"，再点启动就撞端口冲突；
+            '       更糟的是两个 dsh 可能同时写同一份数据
+            '     所以必须先强杀 + 清理，再抛异常。
+            Logger.Warn($"DSH[{Instance.DisplayName}]：等待就绪超时，正在清理可能仍在运行的进程")
+            CleanupProcess(Instance, proc, KillIfAlive:=True)
             Throw New InvalidOperationException(timeoutReason)
         End SyncLock
     End Function
@@ -687,6 +699,60 @@ Public Module DshService
 #Region "停止"
 
     ''' <summary>
+    ''' 彻底清理一个实例的进程资源（杀进程树 + 摘事件 + Dispose + 复位状态）。
+    ''' </summary>
+    ''' <param name="Instance">目标实例。</param>
+    ''' <param name="Proc">要清理的进程对象；为 Nothing 时从实例取。</param>
+    ''' <param name="KillIfAlive">进程还活着时是否强杀。</param>
+    ''' <remarks>
+    ''' ⭐ 抽出来是因为**启动失败路径也要用它**（真实缺陷）：
+    ''' 原来只有 <see cref="StopService"/> 会清理进程，而
+    ''' 「等就绪信号超时」（<c>DshStartupTimeoutMs</c> = 3 分钟）
+    ''' 那条路径抛异常时**什么都不清理** ——
+    ''' 于是 dsh 进程还在后台跑、还占着端口、<c>Instance.Process</c> 还指着它，
+    ''' 而状态已经变成 <c>Failed</c>。用户看到"启动失败"，再点一次启动
+    ''' 就会撞端口冲突；更糟的是两个 dsh 可能同时写同一份数据。
+    '''
+    ''' 幂等：进程已退出 / 已经清理过，再调也不会出错。
+    ''' </remarks>
+    Private Sub CleanupProcess(Instance As DshInstance, Proc As Process, KillIfAlive As Boolean)
+        If Instance Is Nothing Then Return
+        Dim target As Process = If(Proc, Instance.Process)
+
+        If target IsNot Nothing Then
+            If KillIfAlive Then
+                Try
+                    If Not target.HasExited Then KillProcessTree(target)
+                Catch
+                    ' 已退出
+                End Try
+            End If
+            Try
+                RemoveHandler target.OutputDataReceived, AddressOf OnOutputData
+                RemoveHandler target.ErrorDataReceived, AddressOf OnErrorData
+                RemoveHandler target.Exited, AddressOf OnProcessExited
+                target.Dispose()
+            Catch
+                ' 忽略释放异常
+            End Try
+        End If
+
+        Instance.Process = Nothing
+        Instance.ReadyUrl = Nothing
+        Instance.ActualPort = 0
+        ' 释放就绪信号 —— 否则超时路径留下的 ManualResetEventSlim 会一直占着
+        Try
+            Dim sig As Threading.ManualResetEventSlim = Instance.ReadySignal
+            If sig IsNot Nothing Then
+                sig.Dispose()
+                Instance.ReadySignal = Nothing
+            End If
+        Catch
+            ' 已释放
+        End Try
+    End Sub
+
+    ''' <summary>
     ''' 停止某个实例的 dsh 服务。
     ''' </summary>
     ''' <param name="Instance">目标实例。</param>
@@ -723,23 +789,8 @@ Public Module DshService
             Catch ex As Exception
                 Logger.Error(ex, $"DSH[{Instance.DisplayName}]：停止服务时发生异常")
             Finally
-                Try
-                    If Not proc.HasExited Then KillProcessTree(proc)
-                Catch
-                    ' 已退出
-                End Try
-                Try
-                    RemoveHandler proc.OutputDataReceived, AddressOf OnOutputData
-                    RemoveHandler proc.ErrorDataReceived, AddressOf OnErrorData
-                    RemoveHandler proc.Exited, AddressOf OnProcessExited
-                    proc.Dispose()
-                Catch
-                    ' 忽略释放异常
-                End Try
-
-                Instance.Process = Nothing
-                Instance.ReadyUrl = Nothing
-                Instance.ActualPort = 0
+                ' 统一走 CleanupProcess（杀进程树 + 摘事件 + Dispose + 复位状态 + 释放就绪信号）
+                CleanupProcess(Instance, proc, KillIfAlive:=True)
                 Instance.State = ModDSH.DshState.Stopped
                 Logger.Info($"DSH[{Instance.DisplayName}]：服务已停止")
             End Try

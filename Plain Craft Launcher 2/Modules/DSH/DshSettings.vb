@@ -372,7 +372,7 @@ Public Module DshSettings
             Directory.CreateDirectory(dir)
         End If
 
-        Dim tmp As String = Path & ".pcltmp"
+        Dim tmp As String = DshMigrate.DshAtomicTempPath(Path)
         'YAML 用 UTF8 无 BOM；带 BOM 时某些解析器会把第一行的键名带上不可见字符
         File.WriteAllText(tmp, String.Join(vbCrLf, Lines) & vbCrLf, New UTF8Encoding(False))
 

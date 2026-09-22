@@ -491,7 +491,7 @@ Public Module DshPluginMarket
             root("items") = arr
 
             Dim path As String = DshPluginCacheFile
-            Dim tmp As String = path & ".pcltmp"
+            Dim tmp As String = DshMigrate.DshAtomicTempPath(path)
             File.WriteAllText(tmp, root.ToString(Newtonsoft.Json.Formatting.Indented), New UTF8Encoding(False))
 
             If File.Exists(path) Then

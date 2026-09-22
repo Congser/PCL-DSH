@@ -340,7 +340,7 @@ Public Module DshRuntimeSlot
             root("slots") = arr
 
             Dim target As String = ModDSH.DshSlotsFile
-            Dim temp As String = target & ".pcltmp"
+            Dim temp As String = DshMigrate.DshAtomicTempPath(target)
             File.WriteAllText(temp, root.ToString(Newtonsoft.Json.Formatting.Indented), New UTF8Encoding(False))
             If File.Exists(target) Then File.Delete(target)
             File.Move(temp, target)
@@ -468,7 +468,7 @@ Public Module DshRuntimeSlot
             '   于是 File.WriteAllText 会被解析成「String 的成员」而报 BC30456。
             '   这是项目里已经踩过的同类坑（path / dir / step 都是这个家族）。
             Dim manifestPath As String = ModDSH.DshSlotsFile
-            Dim temp As String = manifestPath & ".pcltmp"
+            Dim temp As String = DshMigrate.DshAtomicTempPath(manifestPath)
             File.WriteAllText(temp, root.ToString(Newtonsoft.Json.Formatting.Indented), New UTF8Encoding(False))
             If File.Exists(manifestPath) Then File.Delete(manifestPath)
             File.Move(temp, manifestPath)
@@ -1075,17 +1075,17 @@ Public Module DshRuntimeSlot
     ''' <summary>递归求目录体积（用于统计「跳过了多少」）。</summary>
     ''' <remarks>
     ''' ⚠️ 参数名不叫 <c>Dir</c> —— 那是 VB 内置函数，会撞车（同 <c>dir</c> 循环变量那个坑）。
+    ''' ⚠️ 也不用 <c>EnumerateFiles(..., AllDirectories)</c>：那个 API 遇到任何一层
+    ''' 没权限就整体抛异常（体积归零），而且会跟随符号链接导致虚高。
+    ''' 统一复用 <see cref="DshMigrate.MeasureDirectorySize"/>。
     ''' </remarks>
     Private Function DshSlotMeasureTree(TargetDir As String) As Long
-        Dim total As Long = 0
         Try
-            For Each f In Directory.EnumerateFiles(TargetDir, "*", SearchOption.AllDirectories)
-                total += DshSlotFileSize(f)
-            Next
+            Return DshMigrate.MeasureDirectorySize(TargetDir)
         Catch ex As Exception
             Logger.Warn(ex, $"DSH：统计目录体积失败：{TargetDir}")
+            Return 0L
         End Try
-        Return total
     End Function
 
     ''' <summary>文件体积；读不到时返回 0。</summary>
@@ -1105,22 +1105,22 @@ Public Module DshRuntimeSlot
     ''' <summary>删除一棵目录树；失败只记日志，不抛。</summary>
     ''' <remarks>
     ''' ⚠️ 参数名不叫 <c>Dir</c>（VB 内置函数，会撞车）。
-    ''' 另外会先清掉只读属性 —— 从压缩包里解出来的文件常常带只读位，
-    ''' <c>Directory.Delete(True)</c> 遇到它们会直接抛异常。
+    ''' 统一走 <see cref="DshMigrate.DeleteDirectoryRobust"/> —— 它会：
+    ''' <list type="bullet">
+    ''' <item>清掉只读属性（从压缩包解出来的文件常带只读位，
+    '''       <c>Directory.Delete(True)</c> 遇到它们会直接抛）</item>
+    ''' <item>逐层遍历而不是用 <c>EnumerateFiles(..., AllDirectories)</c>
+    '''       —— 后者遇到任何一层没权限就整体抛异常</item>
+    ''' <item>遇到重解析点只删链接本身，不跟进目标</item>
+    ''' </list>
     ''' </remarks>
     Private Sub DshSlotDeleteTreeSafe(TargetDir As String)
         Try
             If Not Directory.Exists(TargetDir) Then Return
-            For Each f In Directory.EnumerateFiles(TargetDir, "*", SearchOption.AllDirectories)
-                Try
-                    Dim attr = File.GetAttributes(f)
-                    If (attr And FileAttributes.ReadOnly) = FileAttributes.ReadOnly Then
-                        File.SetAttributes(f, attr And Not FileAttributes.ReadOnly)
-                    End If
-                Catch
-                End Try
-            Next
-            Directory.Delete(TargetDir, True)
+            DshMigrate.DeleteDirectoryRobust(TargetDir)
+            If Directory.Exists(TargetDir) Then
+                Logger.Warn($"DSH：目录删除后仍存在（可能被占用）：{TargetDir}")
+            End If
         Catch ex As Exception
             Logger.Warn(ex, $"DSH：删除目录失败：{TargetDir}")
         End Try
