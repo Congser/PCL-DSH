@@ -1042,6 +1042,8 @@ Public Class PageDownloadMirror
                 target = PickInstanceForImport(probe)
                 If target Is Nothing Then
                     ' 用户取消 —— 但如果包里还有运行时，问他要不要只导运行时
+                    ' ⚠️ 这两个 Return 必须清理临时目录，否则会留下几十 MB 残留
+                    '    （实测踩过：第一次导入时取消，临时目录留在了 %TEMP%）
                     If Not probe.HasRuntime Then Return
                     If MyMsgBox(
                         "你没有选择目标实例，包里的实例数据（插件 / 对话历史 / 配置）将被忽略。" & vbCrLf & vbCrLf &
@@ -1082,16 +1084,21 @@ Public Class PageDownloadMirror
                 body.AppendLine("⚠ " & probe.Warning)
             End If
 
-            If MyMsgBox(body.ToString(), "导入环境", "开始导入", "取消") = 2 Then
-                DshEnvImport.DshEnvImportCleanup(probe.ExtractedRoot)
-                Return
-            End If
+            If MyMsgBox(body.ToString(), "导入环境", "开始导入", "取消") = 2 Then Return
 
             ' ── ④ 执行 ──
+            ' 从这里开始临时目录的所有权移交给 RunEnvPackageImport
+            ' （它执行完会自己清理），所以下面要把它置空避免重复清理
             RunEnvPackageImport(probe, target)
         Catch ex As Exception
             Logger.Error(ex, "DSH：导入环境包失败")
             Hint($"导入失败：{ex.Message}", HintType.Red)
+        Finally
+            ' ⭐ 兜底清理：无论走哪条路径（取消 / 异常 / 执行完成）都要清掉临时目录。
+            '    里面有解压出来的完整运行时（几百 MB），留着会白占磁盘。
+            '
+            '    用 Try...Finally 而不是在每个 Return 前手动调 ——
+            '    手动调**漏过一处**（实测踩过：选实例时取消 → 留下 44 MB）。
             DshEnvImport.DshEnvImportCleanup(probe?.ExtractedRoot)
         End Try
     End Sub

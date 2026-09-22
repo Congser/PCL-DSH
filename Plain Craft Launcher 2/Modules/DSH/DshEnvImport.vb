@@ -266,9 +266,13 @@ Public Module DshEnvImport
 
     ''' <summary>清理探测阶段产生的临时目录。</summary>
     Public Sub DshEnvImportCleanup(ExtractedRoot As String)
+        ' ⭐ 幂等：目录已不存在时静默返回。
+        '    调用方会在多处调它（用户取消时由 Finally 兜底、后台任务完成时自己也清），
+        '    重复调用是**预期行为**，不能报错也不能刷日志。
         If String.IsNullOrWhiteSpace(ExtractedRoot) Then Return
         Try
-            If Directory.Exists(ExtractedRoot) Then DshMigrate.DeleteDirectoryRobust(ExtractedRoot)
+            If Not Directory.Exists(ExtractedRoot) Then Return
+            DshMigrate.DeleteDirectoryRobust(ExtractedRoot)
         Catch ex As Exception
             Logger.Warn(ex, $"DSH：清理导入临时目录失败：{ExtractedRoot}")
         End Try
