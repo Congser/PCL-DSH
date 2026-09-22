@@ -54,13 +54,24 @@ Public Module DshProfileSync
     ''' </summary>
     ''' <remarks>
     ''' 「插件 + API Key」只够让新环境能跑起来；用户真正的使用痕迹在这些地方。
-    ''' 分成两类：
+    '''
+    ''' ⭐ <c>sessions</c> 是**最关键的一项** —— dsh 的对话正文存在
+    ''' <c>sessions\&lt;路径编码的工作区&gt;\&lt;会话id&gt;\session.v3.jsonl.zstd</c>。
+    ''' 而 <c>storages</c> 里只有**索引与缓存**
+    ''' （<c>storages\session_projcache\sessions\*.json</c>）。
+    ''' 少了 <c>sessions</c> 就会变成「索引在、正文不在」：
+    ''' 会话列表能看到，点开却是空的 —— 用户报的「全量导入带不过来聊天记录」就是这个。
+    ''' 最初版本的清单漏了它，2026-09-22 修复。
+    '''
+    ''' 其余按用途分三类：
     ''' <list type="bullet">
-    ''' <item><b>使用数据</b>（默认勾选）：<c>storages</c>（工作区与会话表，
-    '''       也就是聊天记录）、<c>dsh-session-archive</c>（归档索引）、
+    ''' <item><b>会话相关</b>：<c>sessions</c>（正文）、<c>storages</c>（索引）、
+    '''       <c>dsh-session-archive</c>（归档）、<c>attachments</c>（附件）、
     '''       <c>task-board</c>（任务看板）</item>
     ''' <item><b>偏好与积累</b>：<c>auto-approve</c>（审批白名单 —— 用户一条条
-    '''       攒出来的信任规则，重新攒很烦）、宠物 / 皮肤 / 语音角色等外观数据</item>
+    '''       攒出来的信任规则，重新攒很烦）</item>
+    ''' <item><b>外观</b>：<c>pets</c> / <c>skins</c> / <c>skin-center</c> /
+    '''       <c>whale-*</c> 与对应的 <c>*.json</c> 状态文件</item>
     ''' </list>
     '''
     ''' ⚠️ 刻意**不搬**的：
@@ -68,16 +79,23 @@ Public Module DshProfileSync
     ''' <item><c>.anonymous-user-id</c> —— 设备标识，跟着机器走，搬过去会造成
     '''       两台机器共用一个 id</item>
     ''' <item><c>profiles\</c> —— 插件目录由「重放依赖清单」重建（见本文件顶部说明）</item>
-    ''' <item>日志类（<c>dsh-usage</c> 的明细）—— 体积会涨，且没有迁移价值</item>
+    ''' <item><c>dsh-usage</c> / <c>.dshw-*.json</c> —— 用量统计，体积会涨且没有迁移价值</item>
+    ''' <item><c>certs</c> —— 本机证书，换机器后本来就失效</item>
     ''' </list>
     ''' </remarks>
     Private ReadOnly DshSyncDataEntries As String() = {
+        "sessions",
         "storages",
         "dsh-session-archive",
+        "attachments",
         "task-board",
         "auto-approve",
+        "pets",
+        "skins",
+        "skin-center",
         "whale-audio",
         "whale-roles",
+        "whale-bubble-imgs",
         "pet.json",
         "skin-center-active.json"
     }
@@ -419,17 +437,44 @@ Public Module DshProfileSync
             plan.Warning = "读不到源环境的凭据文件，API Key 可能搬不过来。"
         End Try
 
-        ' ── ② 插件 ──
+        ' ── ② 实例级使用数据（仅「全量导入」时）──
+        ' 见 DshSyncDataEntries 的说明：这些才是用户真正的使用痕迹
+        ' （聊天记录、任务看板、审批白名单、外观偏好）。
+        '
+        ' ⚠️ 这一段刻意放在**插件解析之前**，且**不受下面任何提前返回影响**。
+        '    数据搬运与插件清单无关 —— 源环境哪怕没有 profile（从没装过插件），
+        '    用户的会话记录依然应该能搬过来。
+        '    （最初版本把它放在插件解析之后，只要 package.json 缺失或解析失败
+        '      就会直接 return，全量导入会**静默地什么都不搬** —— 这种"看起来成功
+        '      但什么都没做"的失败最难查。）
+        If IncludeData Then
+            Try
+                Dim total As Long = 0L
+                For Each entryName As String In DshSyncDataEntries
+                    Dim src As String = Path.Combine(SourceHome, entryName)
+                    If Not (Directory.Exists(src) OrElse File.Exists(src)) Then Continue For
+                    plan.DataItems.Add(entryName)
+                    total += DshSyncMeasure(SourceHome, entryName)
+                Next
+                plan.DataBytes = total
+                Logger.Info($"DSH：全量导入将搬运 {plan.DataItems.Count} 项使用数据（{total} 字节）")
+            Catch ex As Exception
+                Logger.Warn(ex, "DSH：统计待同步的使用数据失败")
+            End Try
+        End If
+
+        ' ── ③ 插件 ──
         Dim profileDir As String = Path.Combine(SourceHome, "profiles", If(ProfileName, ""))
         Dim pkgPath As String = Path.Combine(profileDir, "package.json")
         If Not File.Exists(pkgPath) Then
             If plan.Warning Is Nothing Then
-                plan.Warning = $"源环境里没有 profile「{ProfileName}」，只搬 API Key。"
+                plan.Warning = $"源环境里没有 profile「{ProfileName}」，只搬 API Key" &
+                               If(plan.DataItems.Count > 0, " 与使用数据", "") & "。"
             End If
             Return plan
         End If
 
-        ' ── ②b profile 级 patch 文件（cordis.patch.yml）──
+        ' ── ③b profile 级 patch 文件（cordis.patch.yml）──
         ' 见 ProfilePatchContent 的注释：不搬它，approval-gate 之类插件的
         ' 核心功能就是残的。这里顺手做一次「空数组占位符」清理，
         ' 让搬过去的内容一定可解析（源环境可能是干净的手工版，也可能带占位符）。
@@ -447,29 +492,13 @@ Public Module DshProfileSync
             Logger.Warn(ex, $"DSH：读取 {profileDir} 的 patch 文件失败")
         End Try
 
-        ' ── ②c 实例级使用数据（仅「全量导入」时）──
-        ' 见 DshSyncDataEntries 的说明：这些才是用户真正的使用痕迹
-        ' （聊天记录、任务看板、审批白名单、外观偏好）。
-        If IncludeData Then
-            Try
-                Dim total As Long = 0L
-                For Each entryName As String In DshSyncDataEntries
-                    Dim src As String = Path.Combine(SourceHome, entryName)
-                    If Not (Directory.Exists(src) OrElse File.Exists(src)) Then Continue For
-                    plan.DataItems.Add(entryName)
-                    total += DshSyncMeasure(SourceHome, entryName)
-                Next
-                plan.DataBytes = total
-            Catch ex As Exception
-                Logger.Warn(ex, "DSH：统计待同步的使用数据失败")
-            End Try
-        End If
-
         Dim pkg As JObject = Nothing
         Try
             pkg = JObject.Parse(File.ReadAllText(pkgPath, Encoding.UTF8))
         Catch ex As Exception
-            plan.Warning = "源 profile 的 package.json 解析失败：" & ex.Message
+            ' ⚠️ 注意这里也**不能**把已经收集好的数据丢掉 —— DataItems 上面就填好了，
+            '    Return 只是放弃解析插件清单。
+            plan.Warning = "源 profile 的 package.json 解析失败（插件清单跳过）：" & ex.Message
             Return plan
         End Try
 

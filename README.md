@@ -59,7 +59,10 @@
 - [x] **插件社区**：索引站数据源（静态 JSON，无配额）+ GitHub topic 回退源
 - [x] **搜索 / 分类 / 排序 / 分页**（4062 条按 60 条一页）
 - [x] **本地插件导入**（GitHub 链接 / 文件夹 / 剪贴板）
-- [x] **从其他环境导入**：把另一份 dsh 环境的插件 + 密钥 + profile 配置搬过来
+- [x] **从其他环境导入**：先探测，再选范围
+  - **仅配置**：插件 + API Key + profile 配置
+  - **全量导入**：再加上对话正文（`sessions`）、会话索引、附件、
+    任务看板、审批白名单、外观数据 —— 共 14 项
 
 ### 诊断与维护
 - [x] **环境体检** + **一键修复**
@@ -81,16 +84,16 @@
 
 ---
 
-## 🐛 已知问题
+## 🐛 已修复的问题
 
 ### #1 全量导入不会带过来聊天记录
 
-**状态**：已定位，**尚未修复**（欢迎 PR）
+**状态**：✅ **已修复**（2026-09-22）
 
 **现象**
 
 「从其他环境导入 → 全量导入」之后，插件和 API Key 都正常，
-但**历史对话在新环境里看不到**。
+但**历史对话在新环境里看不到** —— 会话列表能看到，点进去是空的。
 
 **根因**
 
@@ -131,43 +134,49 @@ $DSH_HOME/sessions/
 
 **修法**
 
-把 `sessions` 加进 `DshSyncDataEntries` 即可：
+1. **`sessions` 加进 `DshSyncDataEntries`** —— 顺带补上
+   `attachments` / `pets` / `skins` / `skin-center` / `whale-bubble-imgs`，
+   清单从 8 项变成 14 项：
 
-```vb
-Private ReadOnly DshSyncDataEntries As String() = {
-    "sessions",          ' ← 对话正文（本次缺失的就是它）
-    "storages",          ' 会话索引 / 缓存
-    "dsh-session-archive",
-    "task-board",
-    "auto-approve",
-    "attachments",       ' 附件
-    "pets",              ' 宠物数据
-    "skins",             ' 皮肤
-    "skin-center",       ' 皮肤中心缓存
-    "whale-audio",
-    "whale-roles",
-    "whale-bubble-imgs",
-    "pet.json",
-    "skin-center-active.json"
-}
-```
+   ```vb
+   Private ReadOnly DshSyncDataEntries As String() = {
+       "sessions",          ' ← 对话正文（本次缺失的就是它）
+       "storages",          ' 会话索引 / 缓存
+       "dsh-session-archive",
+       "attachments",
+       "task-board",
+       "auto-approve",
+       "pets",
+       "skins",
+       "skin-center",
+       "whale-audio",
+       "whale-roles",
+       "whale-bubble-imgs",
+       "pet.json",
+       "skin-center-active.json"
+   }
+   ```
 
-**顺带注意两点**
+2. **把数据收集提到插件解析之前** —— 原来它在插件解析**之后**，
+   只要 `package.json` 缺失或解析失败就会提前 `Return`，
+   全量导入会**静默地什么都不搬**。这种「看起来成功但什么都没做」的失败最难查。
 
-1. `sessions/` 的工作区目录名是**路径编码**（`--D-harness--` 对应 `D:\harness`）。
-   换机器后原路径可能不存在，会话能打开但工作区要重新选。
-   这是 dsh 的存储格式决定的，**不是本项目的 bug**，但界面文案里应该提醒用户。
-2. `skin-center` 有十几 MB，全量导入会让体积涨不少 —— 可以考虑做成可勾选项。
+**验证**
 
-**如何验证**
+在真实环境跑了一遍：
 
-```powershell
-# 源环境有几个会话文件
-(Get-ChildItem "$env:USERPROFILE\.dsh\sessions" -Recurse -File).Count
+| | 源环境 `~/.dsh` | 导入后目标实例 |
+|---|---|---|
+| `sessions` 文件数 | 12 | **12** ✅ |
+| 工作区目录数 | 5 | **5** ✅ |
 
-# 导入后目标实例应该一样多
-(Get-ChildItem "<数据根>\instances\<实例id>\sessions" -Recurse -File).Count
-```
+界面提示也从「使用数据：8 项（153.5 KB）」变成「**14 项（26.8 MB）**」。
+
+**遗留注意事项**
+
+`sessions/` 的工作区目录名是**路径编码**（`--D-harness--` 对应 `D:\harness`）。
+换机器后原路径可能不存在，会话能打开但工作区要重新选。
+这是 dsh 的存储格式决定的，不是本项目的 bug，界面文案里已经提醒用户。
 
 ---
 
