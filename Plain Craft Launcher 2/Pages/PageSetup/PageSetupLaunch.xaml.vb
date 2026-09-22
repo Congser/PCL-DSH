@@ -200,6 +200,8 @@ PreFin:
             RefreshDshPluginSourceNote()
             ' 从其他环境同步的说明（探测默认 .dsh + 当前实例）—— 也是纯文件探测
             RefreshDshSyncNote()
+            ' 对话历史复制（实例下拉 + 目标勾选）—— 只数目录里的文件，成本可忽略
+            RefreshSessionCopyUI()
             ' Process spawns -- must be async.
             RefreshDshRuntimeProbeAsync()
         Catch ex As Exception
@@ -1191,6 +1193,219 @@ PreFin:
             LabDshSyncNote.Text = String.Join(vbCrLf, parts)
         Catch ex As Exception
             Logger.Warn(ex, "DSH：刷新同步说明失败（可忽略）")
+        End Try
+    End Sub
+
+    ''' <summary>目标实例的勾选框（实例 Id → 控件），用来读取用户的选择。</summary>
+    Private ReadOnly SessionTargetChecks As New Dictionary(Of String, MyCheckBox)(StringComparer.OrdinalIgnoreCase)
+
+    ''' <summary>防止程序化设 SelectedIndex 时递归触发刷新。</summary>
+    Private IsUpdatingSessionCombo As Boolean = False
+
+    ''' <summary>
+    ''' 刷新「对话历史」这一块的界面：来源实例下拉框 + 目标实例勾选框。
+    ''' </summary>
+    ''' <remarks>
+    ''' ⚠️ <c>MyComboBox</c> 非可编辑时 <c>TextChanged</c> **永远不触发**，
+    ''' 必须挂 <c>SelectionChanged</c>（项目里踩过三次）。
+    ''' 而挂了它之后，程序化设 <c>SelectedIndex</c> 也会触发 ——
+    ''' 所以填充时要先用 <c>IsUpdatingSessionCombo</c> 挡住，否则会递归刷新。
+    ''' </remarks>
+    Private Sub RefreshSessionCopyUI()
+        Try
+            If ComboSessionSource Is Nothing Then Return
+
+            IsUpdatingSessionCombo = True
+            Try
+                Dim names As New List(Of String)
+                For Each inst In ModDSH.DshInstances
+                    names.Add(inst.DisplayName)
+                Next
+                ComboSessionSource.ItemsSource = names
+
+                Dim sel As DshInstance = ModDSH.DshSelectedInstance
+                Dim idx As Integer = If(sel Is Nothing, -1, ModDSH.DshInstances.IndexOf(sel))
+                If idx < 0 AndAlso names.Count > 0 Then idx = 0
+                ComboSessionSource.SelectedIndex = idx
+            Finally
+                IsUpdatingSessionCombo = False
+            End Try
+
+            RefreshSessionTargets()
+            RefreshSessionSourceNote()
+        Catch ex As Exception
+            Logger.Warn(ex, "DSH：刷新对话历史界面失败（可忽略）")
+        End Try
+    End Sub
+
+    ''' <summary>当前选中的来源实例。</summary>
+    Private Function SessionSourceInstance() As DshInstance
+        Try
+            Dim i As Integer = ComboSessionSource.SelectedIndex
+            If i < 0 OrElse i >= ModDSH.DshInstances.Count Then Return Nothing
+            Return ModDSH.DshInstances(i)
+        Catch ex As Exception
+            Return Nothing
+        End Try
+    End Function
+
+    Private Sub ComboSessionSource_SelectionChanged(sender As Object, e As SelectionChangedEventArgs) Handles ComboSessionSource.SelectionChanged
+        If IsUpdatingSessionCombo Then Return
+        Try
+            RefreshSessionTargets()
+            RefreshSessionSourceNote()
+        Catch ex As Exception
+            Logger.Warn(ex, "DSH：切换对话来源实例失败（可忽略）")
+        End Try
+    End Sub
+
+    ''' <summary>重建目标实例勾选框（排除来源实例本身，默认全选）。</summary>
+    Private Sub RefreshSessionTargets()
+        Try
+            If PanSessionTargets Is Nothing Then Return
+            PanSessionTargets.Children.Clear()
+            SessionTargetChecks.Clear()
+
+            Dim src As DshInstance = SessionSourceInstance()
+            For Each inst In ModDSH.DshInstances
+                If src IsNot Nothing AndAlso
+                   String.Equals(inst.Id, src.Id, StringComparison.OrdinalIgnoreCase) Then Continue For
+                Dim cnt As Integer = DshSessionCopy.DshSessionCount(inst)
+                Dim cb As New MyCheckBox With {
+                    .Text = $"{inst.DisplayName}　（现有 {cnt} 个会话）",
+                    .Checked = True,
+                    .Margin = New Thickness(0, 0, 0, 6)
+                }
+                SessionTargetChecks(inst.Id) = cb
+                PanSessionTargets.Children.Add(cb)
+            Next
+
+            If SessionTargetChecks.Count = 0 Then
+                Dim tip As New TextBlock With {
+                    .Text = "只有一个实例，没有可复制的目标。",
+                    .FontSize = 12,
+                    .Margin = New Thickness(0, 0, 0, 6)
+                }
+                tip.SetResourceReference(TextBlock.ForegroundProperty, "ColorBrushGray4")
+                PanSessionTargets.Children.Add(tip)
+            End If
+        Catch ex As Exception
+            Logger.Warn(ex, "DSH：重建目标实例列表失败（可忽略）")
+        End Try
+    End Sub
+
+    Private Sub RefreshSessionSourceNote()
+        Try
+            If LabSessionSourceNote Is Nothing Then Return
+            Dim src As DshInstance = SessionSourceInstance()
+            If src Is Nothing Then
+                LabSessionSourceNote.Text = "当前没有实例，请先在「我的实例」里新建一个。"
+                Return
+            End If
+            LabSessionSourceNote.Text = $"「{src.DisplayName}」共有 {DshSessionCopy.DshSessionCount(src)} 个会话"
+        Catch ex As Exception
+            Logger.Warn(ex, "DSH：刷新对话来源说明失败（可忽略）")
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' 「复制对话历史」：把来源实例里有、目标实例里没有的会话复制过去。
+    ''' </summary>
+    ''' <remarks>
+    ''' 语义是**只补缺** —— 目标实例已有的会话一个都不会被改动，
+    ''' 所以不需要备份、不需要回滚，出不了事。详见 <see cref="DshSessionCopy"/>。
+    ''' </remarks>
+    Private Sub BtnCopySessions_Click() Handles BtnCopySessions.Click
+        If IsDshMaintenanceBusy Then Return
+        Try
+            Dim src As DshInstance = SessionSourceInstance()
+            If src Is Nothing Then
+                Hint("请先选择一个来源实例。", HintType.Red)
+                Return
+            End If
+
+            Dim targets As New List(Of DshInstance)()
+            For Each inst In ModDSH.DshInstances
+                If String.Equals(inst.Id, src.Id, StringComparison.OrdinalIgnoreCase) Then Continue For
+                Dim cb As MyCheckBox = Nothing
+                If SessionTargetChecks.TryGetValue(inst.Id, cb) AndAlso cb IsNot Nothing AndAlso cb.Checked Then
+                    targets.Add(inst)
+                End If
+            Next
+            If targets.Count = 0 Then
+                Hint("请至少勾选一个目标实例。", HintType.Red)
+                Return
+            End If
+
+            Dim srcCount As Integer = DshSessionCopy.DshSessionCount(src)
+            If srcCount = 0 Then
+                MyMsgBox($"实例「{src.DisplayName}」里没有对话历史，无需复制。", "没有可复制的内容", "知道了")
+                Return
+            End If
+
+            Dim running As List(Of DshInstance) =
+                targets.Where(Function(x) x.IsRunning OrElse x.HasLiveProcess).ToList()
+            If running.Count > 0 Then
+                Hint($"有目标实例正在运行（{String.Join("、", running.Select(Function(x) x.DisplayName))}），" &
+                     "请先停止后再复制。", HintType.Red)
+                Return
+            End If
+
+            Dim choice As Integer = MyMsgBox(
+                $"把「{src.DisplayName}」的对话历史复制到下面 {targets.Count} 个实例？" & vbCrLf & vbCrLf &
+                $"目标：{String.Join("、", targets.Select(Function(x) x.DisplayName))}" & vbCrLf & vbCrLf &
+                "· 只复制目标实例**没有**的会话" & vbCrLf &
+                "· 目标实例已有的会话**一个都不会被改动**" & vbCrLf &
+                "· 不会动密钥与插件" & vbCrLf & vbCrLf &
+                "注意：复制期间目标实例不能处于运行状态。",
+                "复制对话历史", "开始复制", "取消")
+            If choice <> 1 Then Return
+
+            SetDshMaintenanceBusy(True)
+            Dim progressControl As New DshMaintenanceProgress("正在复制对话历史")
+            progressControl.Show()
+
+            RunInNewThread(
+                Sub()
+                    Dim res As DshSessionCopy.DshSessionCopyResult = Nothing
+                    Dim errMsg As String = Nothing
+                    Try
+                        res = DshSessionCopy.DshSessionCopyToInstances(src, targets,
+                            Sub(stage, message, pct)
+                                RunInUi(Sub() progressControl.Update(stage, message, pct))
+                            End Sub)
+                    Catch ex As Exception
+                        errMsg = ex.Message
+                        Logger.Error(ex, "DSH：复制对话历史失败")
+                    End Try
+
+                    RunInUi(
+                        Sub()
+                            Try
+                                progressControl.Close()
+                                SetDshMaintenanceBusy(False)
+
+                                If errMsg IsNot Nothing Then
+                                    Hint($"复制出错：{errMsg}", HintType.Red)
+                                    Return
+                                End If
+                                If res Is Nothing Then
+                                    Hint("复制没有返回结果，请查看日志。", HintType.Red)
+                                    Return
+                                End If
+
+                                MyMsgBox(res.Message, If(res.Success, "复制完成", "复制未完全成功"))
+                                Hint(If(res.Success, "对话历史复制完成。", "复制部分失败，详见弹窗。"),
+                                     If(res.Success, HintType.Green, HintType.Red))
+                                RefreshSessionCopyUI()
+                            Catch ex As Exception
+                                Logger.Error(ex, "DSH：展示复制结果失败")
+                            End Try
+                        End Sub)
+                End Sub, "DSH 复制对话历史")
+        Catch ex As Exception
+            Logger.Error(ex, "DSH：复制对话历史流程启动失败")
+            Hint($"无法启动复制：{ex.Message}", HintType.Red)
         End Try
     End Sub
 

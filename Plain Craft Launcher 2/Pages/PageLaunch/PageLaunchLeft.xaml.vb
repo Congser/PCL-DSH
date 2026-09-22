@@ -41,7 +41,16 @@ Public Class PageLaunchLeft
                     Logger.Warn($"Minecraft 文件夹无效，该文件夹已不存在：{McFolderSelected}")
                 End If
                 McFolderListLoader.WaitForExit(IsForceRestart:=True)
-                McFolderSelected = McFolderList.First.Location
+                ' ⚠️ PCL_DSH：本改版不做 MC 文件夹扫描（见 ModMinecraft.McFolderListLoadSub），
+                '    所以 McFolderList **可能是空的** —— 直接 .First 会抛
+                '    InvalidOperationException（序列不包含任何元素）。
+                '    这里必须判空，否则一旦这个页面被加载就会崩。
+                If McFolderList.Any() Then
+                    McFolderSelected = McFolderList.First.Location
+                Else
+                    McFolderSelected = ""
+                    Logger.Info("PCL_DSH：没有可用的 Minecraft 文件夹（本改版不含 MC 功能）")
+                End If
             End If
             If Settings.Get(Of Boolean)("SystemDebugDelay") Then Thread.Sleep(RandomInteger(500, 3000))
             '自动整合包安装

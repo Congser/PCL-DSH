@@ -57,6 +57,23 @@ Public Module ModMinecraft
     Public McFolderListLoader As New LoaderTask(Of Integer, Integer)("Minecraft Folder List", AddressOf McFolderListLoadSub, Priority:=ThreadPriority.AboveNormal)
     Private Sub McFolderListLoadSub()
         Try
+            ' ── PCL_DSH：本改版已剥离全部 Minecraft 功能，不做任何 MC 文件夹处理 ──
+            '
+            ' ⚠️ 这一段**必须**留着。上游逻辑在「扫不到任何 MC 文件夹」时会
+            '    `DirectoryUtils.Create(Paths.Base & ".minecraft\versions\")`
+            '    并写 `launcher_profiles.json` —— 于是一个声称"剥离 MC"的软件
+            '    每次启动都会在**自己的目录里凭空造出一个 .minecraft**，
+            '    用户看到只会困惑。
+            '
+            ' 更实际的风险：如果用户把 PCL_DSH 解压进**真实的 MC 目录**，
+            ' 上游逻辑会把那个目录识别成「当前文件夹」并写进 LaunchFolders 设置，
+            ' 无谓地污染用户的 MC 环境。
+            '
+            ' 只做早退、**不删上游代码** —— 删了会和上游合并冲突；
+            ' 而且以后若要恢复 MC 功能，把这段去掉即可。
+            Logger.Info("PCL_DSH：已跳过 Minecraft 文件夹扫描（本改版不含 MC 功能）")
+            Return
+
             '初始化
             Dim CacheMcFolderList = New List(Of McFolder)
 

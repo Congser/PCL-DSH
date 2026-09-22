@@ -70,6 +70,9 @@
       给出问题原因与处理建议。**只给建议，不会自动替你改任何东西**
 - [x] **实例快照**：快速（只存配置与使用数据，几 MB）/ 完整（含依赖，可离线恢复）两档；
       恢复前自动备份当前状态
+- [x] **对话历史跨实例复制**：每个实例的对话历史是独立的，
+      这里可以选一个实例当来源，把它有、其他实例没有的会话复制过去
+      （**只补缺** —— 目标已有的会话一个都不动）
 - [x] **启动前自愈**：
   - 修掉 profile patch 里的 YAML 空数组占位符（第三方插件会写坏它）
   - 补上缺失的本地插件符号链接
@@ -178,6 +181,62 @@ $DSH_HOME/sessions/
 换机器后原路径可能不存在，会话能打开但工作区要重新选。
 这是 dsh 的存储格式决定的，不是本项目的 bug，界面文案里已经提醒用户。
 
+### #2 启动时会在自己目录里凭空生成 `.minecraft`
+
+**状态**：✅ **已修复**（2026-09-22）
+
+**现象**
+
+一个声称「剥离全部 Minecraft 功能」的软件，每次启动都会在自己的目录里
+创建一个 `.minecraft\`（含空的 `versions\` 和 `launcher_profiles.json`）。
+
+**根因**
+
+上游 PCL 的 `McFolderListLoadSub`（`Modules/Minecraft/ModMinecraft.vb`）
+在扫不到任何 MC 文件夹时会兜底创建一个：
+
+```vb
+'若没有可用文件夹，则创建 .minecraft
+If Not CacheMcFolderList.Any() Then
+    DirectoryUtils.Create(Paths.Base & ".minecraft\versions\")
+    ...
+End If
+```
+
+PCL_DSH 剥离 MC 功能时没动这段，于是它一直在跑。
+
+**影响**
+
+功能上无影响（1 KB 空壳，且 `McFolderLauncherProfilesJsonCreate` 对已存在的
+`launcher_profiles.json` 会直接返回、**不覆盖**）。
+但**自相矛盾**，而且有个真实风险：如果用户把 PCL_DSH 解压进**真实的 MC 目录**，
+上游逻辑会把那个目录识别成「当前文件夹」并写进 `LaunchFolders` 设置，无谓地污染它。
+
+**修法**
+
+在 `McFolderListLoadSub` 开头加早退（**只加判断、不删上游代码** —— 删了会和上游合并冲突）：
+
+```vb
+Logger.Info("PCL_DSH：已跳过 Minecraft 文件夹扫描（本改版不含 MC 功能）")
+Return
+```
+
+⚠️ **连带改了一处**：`PageLaunchLeft` 里有 `McFolderList.First.Location`，
+早退后 `McFolderList` 会是**空列表**，`.First` 会抛
+`InvalidOperationException`。已加判空：
+
+```vb
+If McFolderList.Any() Then
+    McFolderSelected = McFolderList.First.Location
+Else
+    McFolderSelected = ""
+End If
+```
+
+**验证**：删掉 `.minecraft` → 启动 → **未被重新创建**，日志出现
+`已跳过 Minecraft 文件夹扫描`，且实例加载正常（`已加载 1 个实例`）。
+
+
 ---
 
 ## 构建
@@ -225,6 +284,7 @@ Plain Craft Launcher 2/
 │   ├─ DshPluginMarket.vb    插件市场（索引站 + GitHub 回退）
 │   ├─ DshProfileSync.vb     从其他环境导入
 │   ├─ DshSnapshot.vb        实例快照
+│   ├─ DshSessionCopy.vb     对话历史跨实例复制（只补缺）
 │   ├─ DshLogAi.vb           AI 分析日志（含脱敏）
 │   ├─ DshMigrate.vb         数据目录迁移（含符号链接重建）
 │   ├─ DshDoctor.vb          环境体检

@@ -205,6 +205,31 @@
                     <TextBlock x:Name="LabDshSyncNote" Margin="0,8,0,0" FontSize="11.5" TextWrapping="Wrap"
                                LineHeight="19" Foreground="{DynamicResource ColorBrushGray4}" />
 
+                    <!-- 对话历史跨实例复制 -->
+                    <TextBlock Margin="0,20,0,8" FontSize="13" FontWeight="Bold"
+                               Foreground="{DynamicResource ColorBrush1}" Text="对话历史" />
+                    <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="20"
+                               Margin="0,0,0,10" Foreground="{DynamicResource ColorBrushGray4}"
+                               Text="每个实例的对话历史是**互相独立**的（这正是多实例的意义：换 API Key、换插件组合时互不干扰）。想把散在各处的对话集中起来时，可以选一个实例当来源，把它有、其他实例没有的会话复制过去。&#x0a;复制是**只补缺**：目标实例已有的会话一个都不会被改动，所以不会丢东西。" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="240" />
+                            <ColumnDefinition Width="1*" />
+                        </Grid.ColumnDefinitions>
+                        <local:MyComboBox x:Name="ComboSessionSource" Grid.Column="0"
+                                          ToolTip="选一个实例作为对话历史的来源。" />
+                        <TextBlock x:Name="LabSessionSourceNote" Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center"
+                                   FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource ColorBrushGray3}" />
+                    </Grid>
+                    <TextBlock Margin="0,12,0,6" FontSize="12.5" TextWrapping="Wrap"
+                               Foreground="{DynamicResource ColorBrushGray4}"
+                               Text="复制到（可多选，默认全选）：" />
+                    <StackPanel x:Name="PanSessionTargets" />
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <local:MyButton x:Name="BtnCopySessions" Text="复制对话历史" ColorType="Highlight"
+                                        ToolTip="把来源实例里有、目标实例里没有的会话复制过去。目标已有的会话不会被改动。" />
+                    </StackPanel>
+
                     <!-- 插件市场数据源 -->
                     <TextBlock Margin="0,20,0,8" FontSize="13" FontWeight="Bold"
                                Foreground="{DynamicResource ColorBrush1}" Text="插件市场数据源" />
