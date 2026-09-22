@@ -435,11 +435,21 @@ Public Module DshRuntime
             '    node 在 Windows 上会直接启动失败 —— 表现就是「明明能跑的 dsh 被判成跑不起来」。
             '    这和 DshService 启动服务时是同一个坑（见那里的注释）。
             SeedEnvironment(psi)
-            ' 工作目录设为 dsh 安装目录：与真实启动保持一致，模块解析走同一条路径。
+            ' 工作目录：优先用「被测程序所在目录」。
+            '
+            ' ⚠️ 原来写的是 ModDSH.DshInstallDir（旧的单例目录）——
+            '    多版本并存后那个目录可能根本不存在，设上去会让 Process.Start
+            '    抛「目录名称无效」，把"程序没问题"误判成"跑不起来"。
+            '
+            ' 用被测程序自己的目录是**通用且安全**的做法：它是我们正要执行的东西，
+            ' 一定存在（函数开头已校验过 FileExistsSafe）。
             Try
-                If Directory.Exists(ModDSH.DshInstallDir) Then psi.WorkingDirectory = ModDSH.DshInstallDir
+                Dim exeDir As String = Path.GetDirectoryName(exePath)
+                If Not String.IsNullOrWhiteSpace(exeDir) AndAlso Directory.Exists(exeDir) Then
+                    psi.WorkingDirectory = exeDir
+                End If
             Catch
-                ' 设不上就算了，不影响大多数情况
+                ' 设不上就算了 —— 探测本身不需要工作目录正确
             End Try
             ' 保持干净 —— 探测不应受父进程环境影响
             SetEnvSafe(psi, "NO_COLOR", "1")
@@ -549,6 +559,60 @@ Public Module DshRuntime
         ' 兜底：老的固定路径。保证「槽位清单损坏」时仍能启动
         Dim entry = Path.Combine(ModDSH.DshInstallDir, DshEntryRelative)
         Return If(FileExistsSafe(entry), entry, Nothing)
+    End Function
+
+    ''' <summary>
+    ''' 从 dsh 入口脚本路径反推**运行时的根目录**（用作子进程的工作目录）。
+    ''' </summary>
+    ''' <param name="EntryPath">lib/bin.js 的绝对路径。</param>
+    ''' <returns>运行目录；推不出来时返回 Nothing。</returns>
+    ''' <remarks>
+    ''' ⭐ 为什么不用 <c>ModDSH.DshInstallDir</c>：
+    ''' 多版本并存后，运行时装在 <c>runtime\versions\&lt;版本&gt;\</c>
+    ''' 或 <c>runtime\imported\&lt;id&gt;\</c>，而 <c>DshInstallDir</c>
+    ''' （旧的单例目录 <c>runtime\dsh\</c>）**可能根本不存在**。
+    '''
+    ''' ⚠️ 实测踩过：用户清空环境后用导入的运行时启动，直接抛
+    ''' <c>System.ComponentModel.Win32Exception: 目录名称无效</c> ——
+    ''' 因为 <c>ProcessStartInfo.WorkingDirectory</c> 指向了不存在的目录。
+    ''' 报错信息完全看不出是工作目录的问题。
+    '''
+    ''' 入口的固定形状是
+    ''' <c>&lt;运行目录&gt;\node_modules\@deepseek-ai\dsh\lib\bin.js</c>，
+    ''' 所以从文件往上退 4 层就是运行目录。这样**不依赖任何全局状态**，
+    ''' 无论槽位在哪种布局下都算得对。
+    ''' </remarks>
+    Public Function DshDeriveWorkDir(EntryPath As String) As String
+        Try
+            If String.IsNullOrWhiteSpace(EntryPath) Then Return Nothing
+
+            ' 做法：从入口路径里**裁掉已知的相对部分**，剩下的就是运行目录。
+            '   <运行目录>\node_modules\@deepseek-ai\dsh\lib\bin.js
+            '   裁掉            node_modules\@deepseek-ai\dsh\lib\bin.js
+            '   → <运行目录>
+            '
+            ' ⚠️ 用字符串裁剪而不是"退 N 层父目录"：后者要数层数，容易差一层
+            '    （我第一版就写成了退 5 层）。
+            Dim entry As String = EntryPath.TrimEnd("\"c)
+            Dim rel As String = DshEntryRelative.TrimEnd("\"c)
+            If Not entry.EndsWith(rel, StringComparison.OrdinalIgnoreCase) Then
+                Logger.Warn($"DSH：入口路径不符合预期形状，无法反推工作目录：{EntryPath}")
+                Return Nothing
+            End If
+            Dim root As String = entry.Substring(0, entry.Length - rel.Length).TrimEnd("\"c)
+            If String.IsNullOrWhiteSpace(root) Then Return Nothing
+
+            ' 校验：这个目录下真的能看到入口文件
+            Dim check As String = Path.Combine(root, DshEntryRelative)
+            If FileExistsSafe(check) Then Return root
+
+            ' 校验不通过就放弃 —— 宁可让调用方用系统默认目录，也不要设一个错的
+            Logger.Warn($"DSH：从入口反推的工作目录校验未通过（推得 {root}，但 {check} 不存在）")
+            Return Nothing
+        Catch ex As Exception
+            Logger.Warn(ex, $"DSH：反推运行时工作目录失败：{EntryPath}")
+            Return Nothing
+        End Try
     End Function
 
     ''' <summary>读取当前激活槽位的 dsh 版本号。读取失败返回 Nothing。</summary>

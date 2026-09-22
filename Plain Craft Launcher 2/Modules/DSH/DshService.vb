@@ -298,16 +298,32 @@ Public Module DshService
             Logger.Info($"DSH[{Instance.DisplayName}]：启动服务 → port={actualPort}, profile={profileName}")
             Logger.Info($"DSH[{Instance.DisplayName}]：命令：{Runtime.NodeExe} {args}")
 
-            ' 工作目录设为安装目录，避免 dsh 在 PCL 目录里散落文件
+            ' 工作目录设为**运行时自己的目录**，避免 dsh 在 PCL 目录里散落文件。
+            '
+            ' ⚠️ 不能用 ModDSH.DshInstallDir（旧的单例目录 runtime\dsh\）——
+            '    多版本并存后，运行时装在 runtime\versions\<版本>\ 或 runtime\imported\<id>\，
+            '    而 DshInstallDir 那个目录**可能根本不存在**。
+            '    实测踩过：用户清空环境后，Process.Start 直接抛
+            '    「System.ComponentModel.Win32Exception: 目录名称无效」，
+            '    表现成"启动失败"但看不出原因。
+            '
+            ' 这里从入口脚本反推 —— 入口是 <运行目录>\node_modules\@deepseek-ai\dsh\lib\bin.js，
+            ' 往上退 4 层就是运行目录。这样无论槽位在哪种布局下都对。
+            Dim workDir As String = DshRuntime.DshDeriveWorkDir(Runtime.DshEntry)
             Dim psi As New ProcessStartInfo(Runtime.NodeExe, args) With {
                 .UseShellExecute = False,
                 .RedirectStandardOutput = True,
                 .RedirectStandardError = True,
                 .CreateNoWindow = True,
                 .StandardOutputEncoding = Encoding.UTF8,
-                .StandardErrorEncoding = Encoding.UTF8,
-                .WorkingDirectory = ModDSH.DshInstallDir
+                .StandardErrorEncoding = Encoding.UTF8
             }
+            ' 目录真的存在才设 —— 万一推不出来，交给系统默认（总比抛异常好）
+            If Not String.IsNullOrWhiteSpace(workDir) AndAlso Directory.Exists(workDir) Then
+                psi.WorkingDirectory = workDir
+            Else
+                Logger.Warn($"DSH[{Instance.DisplayName}]：无法确定运行时工作目录（入口={Runtime.DshEntry}），将用系统默认目录")
+            End If
             ' ⚠️ 环境变量一律走 DshRuntime 的封装。
             '   ProcessStartInfo.Environment 不继承父进程环境，必须先 SeedEnvironment，
             '   否则 node 连 SystemRoot / TEMP / USERPROFILE 都没有，直接启动失败。

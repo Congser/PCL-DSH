@@ -271,13 +271,27 @@ Public Module DshDoctor
             '   ① package.json 在不在
             '   ② .pnpm 虚拟存储有没有内容（pnpm 安装的硬证据）
             '   ③ 入口文件本身能不能跑起来（最终裁决）
-            Dim nmDir = Path.Combine(ModDSH.DshInstallDir, "node_modules")
+            ' ⚠️ 关键：运行目录必须**从 entry 反推**，不能写死 ModDSH.DshInstallDir。
+            '    DshInstallDir 是旧的单例目录（runtime\dsh\），而多版本并存后
+            '    运行时装在 runtime\versions\<版本>\ 或 runtime\imported\<id>\。
+            '    实测踩过：用户用导入的运行时，这里查的是**不存在的旧目录** →
+            '    误报「dsh 安装不完整：缺少 package.json」→ 引导用户去「一键修复」→
+            '    修复又装了另一个版本并切换过去，把好好的环境搞乱。
+            Dim runtimeRoot As String = DshRuntime.DshDeriveWorkDir(entry)
+            If String.IsNullOrWhiteSpace(runtimeRoot) Then
+                ' 反推失败（入口路径形状异常）—— 用入口所在链路上推一层兜底
+                runtimeRoot = ModDSH.DshInstallDir
+                Logger.Warn($"DSH：体检无法从入口反推运行目录（entry={entry}），回退到 {runtimeRoot}")
+            End If
+
+            Dim nmDir = Path.Combine(runtimeRoot, "node_modules")
             Dim pkgJson = Path.Combine(nmDir, "@deepseek-ai", "dsh", "package.json")
 
             If Not File.Exists(pkgJson) Then
                 r.Level = DshCheckLevel.Error
                 r.Message = "dsh 安装不完整：缺少 package.json。"
-                r.Detail = $"安装目录：{ModDSH.DshInstallDir}"
+                r.Detail = $"运行时目录：{runtimeRoot}" & vbCrLf &
+                           $"入口脚本：{entry}"
                 r.Repairable = True
                 Return r
             End If
@@ -295,10 +309,18 @@ Public Module DshDoctor
                 ' 数不出来不影响结论 —— 下面还有「能不能跑」这一关兜底
             End Try
 
-            If storeCount = 0 Then
+            ' ⚠️ 导入的运行时（本地已有完整 node_modules）不一定有 .pnpm 虚拟存储 ——
+            '    它可能是别人机器上装好后直接打包过来的，pnpm 的 store 布局在别处。
+            '    所以"storeCount = 0"只在**能确定是 pnpm 安装**时才算残缺：
+            '    判据是存在 pnpm-workspace.yaml / .modules.yaml 这类 pnpm 痕迹。
+            Dim looksLikePnpmInstall As Boolean =
+                File.Exists(Path.Combine(runtimeRoot, "pnpm-workspace.yaml")) OrElse
+                File.Exists(Path.Combine(nmDir, ".modules.yaml"))
+
+            If storeCount = 0 AndAlso looksLikePnpmInstall Then
                 r.Level = DshCheckLevel.Error
                 r.Message = "dsh 依赖树疑似残缺（pnpm 存储目录是空的）。"
-                r.Detail = $"安装目录：{ModDSH.DshInstallDir}" & vbCrLf &
+                r.Detail = $"运行时目录：{runtimeRoot}" & vbCrLf &
                            "通常是上一次安装被中断或网络中断导致的。" & vbCrLf &
                            "点击「一键修复」会就地重新安装一遍。"
                 r.Repairable = True
@@ -645,12 +667,32 @@ Public Module DshDoctor
 
     ''' <summary>修复 dsh 本体：就地重装。</summary>
     Private Sub RepairDsh(Progress As DshInstaller.DshInstallProgressHandler, ByRef Outcome As DshRepairOutcome)
-        ' 依赖树残缺时 pnpm 可能因为半装状态而拒绝干活，先把 node_modules 清掉
-        Dim nmDir = Path.Combine(ModDSH.DshInstallDir, "node_modules")
+        ' ── ① 记下当前激活的槽位，装完要切回去 ──
+        ' ⚠️ 为什么必须记：修复会装一个**新版本**（新目录 = 新槽位），
+        '    而"装完不自动切换"是本项目的既定行为（见 InstallDshVersion 的注释）。
+        '    实测踩过：用户用导入的运行时，体检误报 → 修复装新版 → **自动切过去了** →
+        '    用户的插件配置全在新版本里看不到，表现成"问题还在"。
+        Dim prevSlotId As String = Nothing
         Try
-            If Directory.Exists(nmDir) Then
-                DshMigrate.DeleteDirectoryRobust(nmDir)
-                Logger.Info("DSH：已清除残缺的 node_modules，将重新安装")
+            Dim prevSlot = DshRuntimeSlot.DshSlotActive()
+            If prevSlot IsNot Nothing Then prevSlotId = prevSlot.Id
+        Catch ex As Exception
+            Logger.Warn(ex, "DSH：修复前读取激活槽位失败（跳过恢复）")
+        End Try
+
+        ' ── ② 清掉**当前激活槽位**里残缺的 node_modules ──
+        ' ⚠️ 不能清 ModDSH.DshInstallDir —— 那是旧的单例目录，
+        '    多版本并存后用户实际用的可能是 versions\ 或 imported\ 下的槽位。
+        '    清错目录 = 该清的没清、不该动的被删。
+        Try
+            Dim curSlot = DshRuntimeSlot.DshSlotActive()
+            If curSlot IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(curSlot.Dir) AndAlso
+               Directory.Exists(curSlot.Dir) Then
+                Dim nmDir As String = Path.Combine(curSlot.Dir, "node_modules")
+                If Directory.Exists(nmDir) Then
+                    DshMigrate.DeleteDirectoryRobust(nmDir)
+                    Logger.Info($"DSH：已清除残缺的 node_modules（{curSlot.DisplayName}），将重新安装")
+                End If
             End If
         Catch ex As Exception
             Logger.Warn(ex, "DSH：清理 node_modules 失败，继续尝试重装（pnpm 可能会自己修）")
@@ -679,6 +721,26 @@ Public Module DshDoctor
 
         DshInstaller.InstallDshVersion(target, mirror, Progress)
 
+        ' ── ③ 把激活槽位切回修复前的那个 ──
+        ' ⚠️ 只在**槽位真的变了**时才切 —— 如果修复就是重装原来那个槽位（同版本），
+        '    切换是多余的，还可能触发不必要的插件兼容性提醒。
+        Try
+            Dim nowSlot = DshRuntimeSlot.DshSlotActive()
+            Dim nowId As String = If(nowSlot?.Id, Nothing)
+            If Not String.IsNullOrWhiteSpace(prevSlotId) AndAlso
+               Not String.Equals(prevSlotId, nowId, StringComparison.OrdinalIgnoreCase) Then
+                Dim err As String = DshRuntimeSlot.DshSlotSetActive(prevSlotId)
+                If String.IsNullOrWhiteSpace(err) Then
+                    Logger.Info($"DSH：修复后已切回原运行时槽位 {prevSlotId}")
+                    Outcome.Message = $"已修复 dsh 本体（{target}），并切回原来的运行时。"
+                Else
+                    Logger.Warn($"DSH：修复后切回槽位 {prevSlotId} 失败：{err}")
+                End If
+            End If
+        Catch ex As Exception
+            Logger.Warn(ex, "DSH：修复后恢复原槽位失败（用户可手动切换）")
+        End Try
+
         Dim entry = DshRuntime.DetectDsh()
         If String.IsNullOrWhiteSpace(entry) Then
             Outcome.Success = False
@@ -686,7 +748,9 @@ Public Module DshDoctor
             Return
         End If
         Outcome.Success = True
-        Outcome.Message = $"已重装 dsh {target} → {entry}"
+        If String.IsNullOrWhiteSpace(Outcome.Message) Then
+            Outcome.Message = $"已重装 dsh {target} → {entry}"
+        End If
     End Sub
 
     ''' <summary>补齐缺失的实例数据目录。**绝不删除任何东西。**</summary>
