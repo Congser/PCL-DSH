@@ -889,29 +889,85 @@ Public Module DshMigrate
 
     ''' <summary>删除整个目录，自动处理长路径。</summary>
     Private Sub DeleteDirectoryLongPath(Target As String)
+        DeleteDirectoryRobust(Target)
+    End Sub
+
+    ''' <summary>
+    ''' 健壮地删除整个目录树（清只读属性 + 长路径 + 链接安全）。
+    ''' </summary>
+    ''' <remarks>
+    ''' ⭐ 为什么不能直接用 <c>Directory.Delete(path, True)</c>：
+    '''
+    ''' <c>Directory.Delete</c> 遇到**带 <c>ReadOnly</c> 属性的文件会直接抛
+    ''' <c>UnauthorizedAccessException</c>** —— 它不会帮你清属性。
+    ''' 而 dsh 的附件是**内容寻址存储**（<c>attachments\v1\objects\&lt;xx&gt;\&lt;hash&gt;</c>），
+    ''' 写完就设只读防篡改，所以那些文件全是只读的。
+    ''' 结果：快照一旦包含 <c>attachments</c>，删除就必然失败。
+    '''
+    ''' ⚠️ 关键：这**不是权限问题，是文件属性问题** —— 所以报错里提示的
+    ''' 「以管理员身份运行」**根本没有用**（实测确认过）。
+    ''' 正确做法是把 <c>ReadOnly</c> 清掉再删。
+    '''
+    ''' 另外两个细节：
+    ''' <list type="bullet">
+    ''' <item>用**栈**做后序遍历，先删完子项再删空目录 —— 避免递归过深</item>
+    ''' <item>遇到**重解析点（符号链接 / junction）时只删链接本身，不跟进目标** ——
+    '''       否则会把链接指向的真实数据一起删掉（快照里可能含 link: 插件的链接）</item>
+    ''' </list>
+    ''' </remarks>
+    Public Sub DeleteDirectoryRobust(Target As String)
+        If String.IsNullOrWhiteSpace(Target) Then Return
+        If Not Directory.Exists(Target) Then Return
+
+        ' 快路径：先试一次常规删除。全部可写时这是最快的路径。
         Try
             Directory.Delete(Target, True)
             Return
+        Catch ex As UnauthorizedAccessException
+            ' 大概率是只读属性 —— 走下面的清属性流程
+            Logger.Info($"DSH：常规删除被拒（{Target}），改走清属性流程：{ex.Message}")
         Catch ex As Exception
-            Logger.Warn($"DSH：常规删除失败（{ex.Message}），尝试长路径 API")
+            Logger.Warn($"DSH：常规删除失败（{ex.Message}），尝试清属性 + 长路径")
         End Try
 
-        ' 常规删除失败（通常是长路径）→ 先清属性，再逐个删文件，最后删空目录
+        ' 后序遍历：先把所有子项删掉，最后删空目录
+        Dim dirs As New List(Of String)
         Dim stack As New Stack(Of String)
         stack.Push(Target)
         While stack.Count > 0
-            Dim dir = stack.Pop()
+            Dim dir As String = stack.Pop()
+            dirs.Add(dir)
             Try
-                For Each subDir In Directory.GetDirectories(dir)
-                    stack.Push(subDir)
+                For Each subDir As String In Directory.GetDirectories(dir)
+                    ' ⚠️ 重解析点只删链接本身，不递归进去 —— 否则会删掉目标里的真实数据
+                    Dim isLink As Boolean = False
+                    Try
+                        isLink = (New DirectoryInfo(subDir).Attributes And FileAttributes.ReparsePoint) <> 0
+                    Catch ex As Exception
+                        Logger.Warn($"DSH：读取 {subDir} 属性失败（按普通目录处理）")
+                    End Try
+                    If isLink Then
+                        Try
+                            Directory.Delete(subDir, False)
+                        Catch ex As Exception
+                            Logger.Warn($"DSH：删除链接失败（{subDir}）：{ex.Message}")
+                        End Try
+                    Else
+                        stack.Push(subDir)
+                    End If
                 Next
             Catch ex As Exception
                 Logger.Warn($"DSH：枚举待删目录失败（{dir}）：{ex.Message}")
             End Try
+
             Try
-                For Each f In Directory.GetFiles(dir)
+                For Each f As String In Directory.GetFiles(dir)
                     Try
-                        File.SetAttributes(f, FileAttributes.Normal)
+                        ' ⭐ 关键一步：清掉只读等属性，否则 Delete 会抛 UnauthorizedAccessException
+                        Dim fa As FileAttributes = File.GetAttributes(f)
+                        If (fa And FileAttributes.ReadOnly) <> 0 Then
+                            File.SetAttributes(f, fa And Not FileAttributes.ReadOnly)
+                        End If
                         File.Delete(f)
                     Catch ex As Exception
                         Logger.Warn($"DSH：删除文件失败（{f}）：{ex.Message}")
@@ -922,16 +978,14 @@ Public Module DshMigrate
             End Try
         End While
 
-        ' 自底向上删空目录（栈是后进先出，正好是深度优先的逆序）
-        Dim lastErr As Exception = Nothing
-        If Directory.Exists(Target) Then
+        ' 倒序（子目录在前）删空目录
+        For i As Integer = dirs.Count - 1 To 0 Step -1
             Try
-                Directory.Delete(Target, True)
+                Directory.Delete(dirs(i), False)
             Catch ex As Exception
-                lastErr = ex
+                Logger.Warn($"DSH：删除目录失败（{dirs(i)}）：{ex.Message}")
             End Try
-        End If
-        If lastErr IsNot Nothing Then Throw lastErr
+        Next
     End Sub
 
     <DllImport("kernel32.dll", CharSet:=CharSet.Unicode, SetLastError:=True)>

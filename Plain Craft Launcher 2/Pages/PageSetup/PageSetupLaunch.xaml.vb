@@ -202,6 +202,8 @@ PreFin:
             RefreshDshSyncNote()
             ' 对话历史复制（实例下拉 + 目标勾选）—— 只数目录里的文件，成本可忽略
             RefreshSessionCopyUI()
+            ' 插件配置复制 —— 同样只是读 package.json 计数
+            RefreshPluginCopyUI()
             ' Process spawns -- must be async.
             RefreshDshRuntimeProbeAsync()
         Catch ex As Exception
@@ -1403,7 +1405,7 @@ PreFin:
                             End Try
                         End Sub)
                 End Sub, "DSH 复制对话历史")
-        Catch ex As Exception
+         Catch ex As Exception
             Logger.Error(ex, "DSH：复制对话历史流程启动失败")
             Hint($"无法启动复制：{ex.Message}", HintType.Red)
         End Try
@@ -1653,6 +1655,233 @@ PreFin:
                         End Try
                     End Sub)
             End Sub, "DSH 同步环境配置")
+    End Sub
+
+#End Region
+
+#Region "插件配置复制"
+
+    ''' <summary>目标实例的勾选框（实例 Id → 控件）。</summary>
+    Private ReadOnly PluginTargetChecks As New Dictionary(Of String, MyCheckBox)(StringComparer.OrdinalIgnoreCase)
+
+    ''' <summary>防止程序化设 SelectedIndex 时递归触发刷新。</summary>
+    Private IsUpdatingPluginCombo As Boolean = False
+
+    ''' <summary>刷新「插件配置」这一块：来源下拉 + 目标勾选。</summary>
+    Private Sub RefreshPluginCopyUI()
+        Try
+            If ComboPluginSource Is Nothing Then Return
+
+            IsUpdatingPluginCombo = True
+            Try
+                Dim names As New List(Of String)
+                For Each inst In ModDSH.DshInstances
+                    names.Add(inst.DisplayName)
+                Next
+                ComboPluginSource.ItemsSource = names
+                Dim sel As DshInstance = ModDSH.DshSelectedInstance
+                Dim idx As Integer = If(sel Is Nothing, -1, ModDSH.DshInstances.IndexOf(sel))
+                If idx < 0 AndAlso names.Count > 0 Then idx = 0
+                ComboPluginSource.SelectedIndex = idx
+            Finally
+                IsUpdatingPluginCombo = False
+            End Try
+
+            RefreshPluginTargets()
+            RefreshPluginSourceNote()
+        Catch ex As Exception
+            Logger.Warn(ex, "DSH：刷新插件复制界面失败（可忽略）")
+        End Try
+    End Sub
+
+    Private Function PluginSourceInstance() As DshInstance
+        Try
+            Dim i As Integer = ComboPluginSource.SelectedIndex
+            If i < 0 OrElse i >= ModDSH.DshInstances.Count Then Return Nothing
+            Return ModDSH.DshInstances(i)
+        Catch ex As Exception
+            Return Nothing
+        End Try
+    End Function
+
+    Private Sub ComboPluginSource_SelectionChanged(sender As Object, e As SelectionChangedEventArgs) Handles ComboPluginSource.SelectionChanged
+        If IsUpdatingPluginCombo Then Return
+        Try
+            RefreshPluginTargets()
+            RefreshPluginSourceNote()
+        Catch ex As Exception
+            Logger.Warn(ex, "DSH：切换插件来源实例失败（可忽略）")
+        End Try
+    End Sub
+
+    Private Sub RefreshPluginTargets()
+        Try
+            If PanPluginTargets Is Nothing Then Return
+            PanPluginTargets.Children.Clear()
+            PluginTargetChecks.Clear()
+
+            Dim src As DshInstance = PluginSourceInstance()
+            For Each inst In ModDSH.DshInstances
+                If src IsNot Nothing AndAlso
+                   String.Equals(inst.Id, src.Id, StringComparison.OrdinalIgnoreCase) Then Continue For
+                Dim cnt As Integer = DshPluginMarket.ListInstalledPlugins(inst).Count
+                Dim cb As New MyCheckBox With {
+                    .Text = $"{inst.DisplayName}　（已装 {cnt} 个插件）",
+                    .Checked = True,
+                    .Margin = New Thickness(0, 0, 0, 6)
+                }
+                PluginTargetChecks(inst.Id) = cb
+                PanPluginTargets.Children.Add(cb)
+            Next
+
+            If PluginTargetChecks.Count = 0 Then
+                Dim tip As New TextBlock With {
+                    .Text = "只有一个实例，没有可复制的目标。",
+                    .FontSize = 12,
+                    .Margin = New Thickness(0, 0, 0, 6)
+                }
+                tip.SetResourceReference(TextBlock.ForegroundProperty, "ColorBrushGray4")
+                PanPluginTargets.Children.Add(tip)
+            End If
+        Catch ex As Exception
+            Logger.Warn(ex, "DSH：重建插件目标列表失败（可忽略）")
+        End Try
+    End Sub
+
+    Private Sub RefreshPluginSourceNote()
+        Try
+            If LabPluginSourceNote Is Nothing Then Return
+            Dim src As DshInstance = PluginSourceInstance()
+            If src Is Nothing Then
+                LabPluginSourceNote.Text = "当前没有实例，请先在「我的实例」里新建一个。"
+                Return
+            End If
+            Dim n As Integer = DshPluginMarket.ListInstalledPlugins(src).Count
+            LabPluginSourceNote.Text = $"「{src.DisplayName}」已装 {n} 个插件"
+        Catch ex As Exception
+            Logger.Warn(ex, "DSH：刷新插件来源说明失败（可忽略）")
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' 「复制插件配置」：把来源实例的插件 + profile 配置（可选 API Key）复制到目标实例。
+    ''' </summary>
+    ''' <remarks>
+    ''' 底层复用「从其他环境导入」—— 实例的数据目录本身就是一个完整的 dsh 环境。
+    ''' 刻意**不带对话历史**（那是「复制对话历史」的活），
+    ''' 因为搬插件要跑 pnpm（慢、要联网），搬对话是纯复制（快、离线），
+    ''' 混在一起用户就没法只做想要的那件事。
+    ''' </remarks>
+    Private Sub BtnCopyPlugins_Click() Handles BtnCopyPlugins.Click
+        If IsDshMaintenanceBusy Then Return
+        Try
+            Dim src As DshInstance = PluginSourceInstance()
+            If src Is Nothing Then
+                Hint("请先选择一个来源实例。", HintType.Red)
+                Return
+            End If
+
+            Dim targets As New List(Of DshInstance)()
+            For Each inst In ModDSH.DshInstances
+                If String.Equals(inst.Id, src.Id, StringComparison.OrdinalIgnoreCase) Then Continue For
+                Dim cb As MyCheckBox = Nothing
+                If PluginTargetChecks.TryGetValue(inst.Id, cb) AndAlso cb IsNot Nothing AndAlso cb.Checked Then
+                    targets.Add(inst)
+                End If
+            Next
+            If targets.Count = 0 Then
+                Hint("请至少勾选一个目标实例。", HintType.Red)
+                Return
+            End If
+
+            Dim includeKeys As Boolean = (CheckCopyKeys IsNot Nothing AndAlso CheckCopyKeys.Checked)
+
+            ' ── 先探测（只读），把清单摆给用户看 ──
+            Dim probe As DshPluginCopy.DshPluginProbe = DshPluginCopy.DshPluginCopyProbe(src)
+            If Not probe.HasAnything Then
+                MyMsgBox($"实例「{src.DisplayName}」里没有可复制的插件或 API Key。" &
+                         If(String.IsNullOrWhiteSpace(probe.Warning), "", vbCrLf & vbCrLf & probe.Warning),
+                         "没有可复制的内容", "知道了")
+                Return
+            End If
+
+            Dim running As List(Of DshInstance) =
+                targets.Where(Function(x) x.IsRunning OrElse x.HasLiveProcess).ToList()
+            If running.Count > 0 Then
+                Hint($"有目标实例正在运行（{String.Join("、", running.Select(Function(x) x.DisplayName))}），" &
+                     "请先停止后再复制。", HintType.Red)
+                Return
+            End If
+
+            Dim body As New StringBuilder()
+            body.AppendLine($"把「{src.DisplayName}」的插件配置复制到下面 {targets.Count} 个实例？")
+            body.AppendLine()
+            body.AppendLine($"目标：{String.Join("、", targets.Select(Function(x) x.DisplayName))}")
+            body.AppendLine()
+            body.AppendLine($"· 插件：{probe.SpecCount} 个（会联网重新安装）")
+            If probe.LinkCount > 0 Then body.AppendLine($"· 本地插件：{probe.LinkCount} 个（目录会一并搬过去）")
+            If probe.HasPatch Then body.AppendLine("· profile 配置：会一并带上（插件的权限预设写在里面）")
+            If includeKeys AndAlso probe.KeyCount > 0 Then
+                body.AppendLine($"· API Key：{probe.KeyCount} 个（会**覆盖**目标实例的同名密钥）")
+            ElseIf probe.KeyCount > 0 Then
+                body.AppendLine("· API Key：跳过（你取消了勾选，目标实例的密钥保持不变）")
+            End If
+            body.AppendLine()
+            body.AppendLine("· 插件是重新安装而不是复制目录，这样 pnpm 的锁文件才一致，")
+            body.AppendLine("  以后你再装别的插件不会把同步过来的清掉。")
+            body.AppendLine("· **不会**复制对话历史（那是「复制对话历史」的活）。")
+            body.AppendLine()
+            body.AppendLine("安装过程可能需要几分钟，期间请不要关闭 PCL。")
+
+            Dim choice As Integer = MyMsgBox(body.ToString(), "复制插件配置", "开始复制", "取消")
+            If choice <> 1 Then Return
+
+            SetDshMaintenanceBusy(True)
+            Dim progressControl As New DshMaintenanceProgress("正在复制插件配置")
+            progressControl.Show()
+
+            RunInNewThread(
+                Sub()
+                    Dim res As DshPluginCopy.DshPluginCopyResult = Nothing
+                    Dim errMsg As String = Nothing
+                    Try
+                        res = DshPluginCopy.DshPluginCopyToInstances(src, targets, includeKeys,
+                            Sub(stage, message, pct)
+                                RunInUi(Sub() progressControl.Update(stage, message, pct))
+                            End Sub)
+                    Catch ex As Exception
+                        errMsg = ex.Message
+                        Logger.Error(ex, "DSH：复制插件配置失败")
+                    End Try
+
+                    RunInUi(
+                        Sub()
+                            Try
+                                progressControl.Close()
+                                SetDshMaintenanceBusy(False)
+
+                                If errMsg IsNot Nothing Then
+                                    Hint($"复制出错：{errMsg}", HintType.Red)
+                                    Return
+                                End If
+                                If res Is Nothing Then
+                                    Hint("复制没有返回结果，请查看日志。", HintType.Red)
+                                    Return
+                                End If
+
+                                MyMsgBox(res.Message, If(res.Success, "复制完成", "复制未完全成功"))
+                                Hint(If(res.Success, "插件配置复制完成。", "复制部分失败，详见弹窗。"),
+                                     If(res.Success, HintType.Green, HintType.Red))
+                                RefreshPluginCopyUI()
+                            Catch ex As Exception
+                                Logger.Error(ex, "DSH：展示插件复制结果失败")
+                            End Try
+                        End Sub)
+                End Sub, "DSH 复制插件配置")
+        Catch ex As Exception
+            Logger.Error(ex, "DSH：复制插件配置流程启动失败")
+            Hint($"无法启动复制：{ex.Message}", HintType.Red)
+        End Try
     End Sub
 
 #End Region

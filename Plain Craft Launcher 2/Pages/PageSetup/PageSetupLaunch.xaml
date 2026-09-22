@@ -230,6 +230,34 @@
                                         ToolTip="把来源实例里有、目标实例里没有的会话复制过去。目标已有的会话不会被改动。" />
                     </StackPanel>
 
+                    <!-- 插件配置跨实例复制 -->
+                    <TextBlock Margin="0,20,0,8" FontSize="13" FontWeight="Bold"
+                               Foreground="{DynamicResource ColorBrush1}" Text="插件配置" />
+                    <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="20"
+                               Margin="0,0,0,10" Foreground="{DynamicResource ColorBrushGray4}"
+                               Text="插件、API Key、profile 配置同样是每个实例各一套。想把一个实例调好的插件组合搬到其他实例时用这里。&#x0a;插件会**重新安装**（而不是复制 node_modules）—— 这样 pnpm 的锁文件才一致，以后你装别的插件不会把同步过来的清掉。本地插件（link: 类型）会把目录一并搬过去。" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="240" />
+                            <ColumnDefinition Width="1*" />
+                        </Grid.ColumnDefinitions>
+                        <local:MyComboBox x:Name="ComboPluginSource" Grid.Column="0"
+                                          ToolTip="选一个实例作为插件配置的来源。" />
+                        <TextBlock x:Name="LabPluginSourceNote" Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center"
+                                   FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource ColorBrushGray3}" />
+                    </Grid>
+                    <TextBlock Margin="0,12,0,6" FontSize="12.5" TextWrapping="Wrap"
+                               Foreground="{DynamicResource ColorBrushGray4}"
+                               Text="复制到（可多选，默认全选）：" />
+                    <StackPanel x:Name="PanPluginTargets" />
+                    <local:MyCheckBox x:Name="CheckCopyKeys" Height="28" Text="同时复制 API Key"
+                                      Checked="True" Margin="0,6,0,0"
+                                      ToolTip="勾选 = 连源实例的 API Key 一起写过去（新实例不用再粘一次）。取消 = 只搬插件，密钥保持目标实例原有的。" />
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <local:MyButton x:Name="BtnCopyPlugins" Text="复制插件配置" ColorType="Highlight"
+                                        ToolTip="把源实例的插件、profile 配置（以及可选的 API Key）复制到目标实例。会联网重新安装插件。" />
+                    </StackPanel>
+
                     <!-- 插件市场数据源 -->
                     <TextBlock Margin="0,20,0,8" FontSize="13" FontWeight="Bold"
                                Foreground="{DynamicResource ColorBrush1}" Text="插件市场数据源" />

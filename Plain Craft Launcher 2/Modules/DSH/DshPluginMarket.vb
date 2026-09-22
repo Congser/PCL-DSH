@@ -1745,6 +1745,122 @@ Public Module DshPluginMarket
     End Sub
 
     ''' <summary>
+    ''' 把 pnpm 的一行输出翻译成给用户看的进度文案。
+    ''' </summary>
+    ''' <remarks>
+    ''' ⭐ 为什么需要它（真实痛点）：
+    ''' 插件安装要联网下载依赖，国内直连 npmjs.org 经常超时。实测一轮安装
+    ''' 出现过这些日志：
+    ''' <code>
+    ''' [WARN] GET https://registry.npmjs.org/...tgz error
+    '''        (os error 10054 远程主机强迫关闭了一个现有的连接) — 2
+    ''' [WARN] Will retry in 1m. 0 retries left.
+    ''' [WARN] Request took 150672ms: https://registry.npmjs.org/@lezer%2Frust
+    ''' [WARN] Tarball download average speed 25 KiB/s ... is below 50 KiB/s
+    ''' </code>
+    ''' 而界面上的进度浮层只会说「正在安装 E:\...\gal-view」——
+    ''' **用户看到卡十几分钟，会以为程序死了**，然后强制结束 PCL，
+    ''' 留下半装的环境（比"等久一点"糟糕得多）。
+    '''
+    ''' 这里把关键行转成人话透传上去，让用户知道"它在动，只是网络慢"。
+    ''' 只识别几类有意义的行，其余一律忽略 —— 不要把 pnpm 的原始刷屏
+    ''' 糊到进度条上（那反而看不清）。
+    ''' </remarks>
+    Private Sub ReportPnpmLine(Progress As DshPluginProgressHandler,
+                               Line As String, ActionName As String)
+        If Progress Is Nothing OrElse String.IsNullOrWhiteSpace(Line) Then Return
+        Try
+            Dim t As String = Line.Trim()
+
+            ' ① 网络重试 —— 最要紧的一类，用户最需要知道
+            If t.Contains("Will retry in") Then
+                ' 形如 "[WARN] Will retry in 1m. 0 retries left."
+                Dim retries As String = ""
+                Dim m As Text.RegularExpressions.Match =
+                    Text.RegularExpressions.Regex.Match(t, "(\d+)\s*retr(?:y|ies)\s+left")
+                If m.Success Then retries = $"（还剩 {m.Groups(1).Value} 次重试）"
+                Report(Progress, $"网络不稳，正在重试{retries}……（可以继续等，不用关掉 PCL）", -1)
+                Return
+            End If
+
+            If t.Contains("error (Failed to fetch") OrElse
+               t.Contains("operation timed out") OrElse
+               t.Contains("远程主机强迫关闭") Then
+                Report(Progress, "下载超时，正在重试……（网络较慢时插件安装可能要几分钟）", -1)
+                Return
+            End If
+
+            ' ② 慢速下载
+            If t.Contains("is below") AndAlso t.Contains("KiB/s") Then
+                Report(Progress, "下载速度较慢，请耐心等待……", -1)
+                Return
+            End If
+
+            ' ③ pnpm 的进度行 —— 直接透传，它本身就带 "downloaded N" 这种信息
+            If t.Contains("Progress: resolved") Then
+                Dim m As Text.RegularExpressions.Match =
+                    Text.RegularExpressions.Regex.Match(t, "downloaded\s+(\d+).*?added\s+(\d+)")
+                If m.Success Then
+                    Report(Progress, $"正在下载依赖（已下载 {m.Groups(1).Value} 个，已装入 {m.Groups(2).Value} 个）……", -1)
+                End If
+                Return
+            End If
+
+            ' ④ 供应链闸门通过
+            If t.Contains("Lockfile passes supply-chain policies") Then
+                Report(Progress, "依赖清单已通过供应链校验，开始下载……", -1)
+                Return
+            End If
+
+            ' ⑤ 完成
+            If t.Contains("Done in") Then
+                Report(Progress, $"{ActionName}完成，正在收尾……", -1)
+                Return
+            End If
+        Catch ex As Exception
+            ' 翻译失败绝不能影响安装本身
+            Logger.Warn(ex, "DSH：解析 pnpm 输出行失败（已忽略）")
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' 判断这轮 pnpm 输出是不是网络类失败。
+    ''' </summary>
+    ''' <remarks>
+    ''' 用于给出「换个镜像源」的建议。判据来自实测日志：
+    ''' <list type="bullet">
+    ''' <item><c>operation timed out</c> —— 请求超时（实测单次能到 150 秒）</item>
+    ''' <item><c>os error 10054</c> / <c>远程主机强迫关闭</c> —— 连接被重置</item>
+    ''' <item><c>Failed to fetch</c> —— 拉取失败（网络层）</item>
+    ''' <item><c>is below ... KiB/s</c> —— 速度低于阈值，pnpm 会判为不可接受</item>
+    ''' <item><c>ECONNRESET</c> / <c>ETIMEDOUT</c> / <c>ENOTFOUND</c> —— 常见网络错误码</item>
+    ''' </list>
+    ''' 刻意**不**把普通的 404 / 包名拼错算进来 —— 那是另一类问题，换源没用。
+    ''' </remarks>
+    Private Function IsNetworkFailure(Tail As List(Of String)) As Boolean
+        If Tail Is Nothing OrElse Tail.Count = 0 Then Return False
+        Try
+            For Each line As String In Tail
+                If String.IsNullOrWhiteSpace(line) Then Continue For
+                If line.Contains("operation timed out") OrElse
+                   line.Contains("os error 10054") OrElse
+                   line.Contains("远程主机强迫关闭") OrElse
+                   line.Contains("Failed to fetch") OrElse
+                   line.Contains("ECONNRESET") OrElse
+                   line.Contains("ETIMEDOUT") OrElse
+                   line.Contains("ENOTFOUND") OrElse
+                   line.Contains("is below") AndAlso line.Contains("KiB/s") Then
+                    Return True
+                End If
+            Next
+            Return False
+        Catch ex As Exception
+            Logger.Warn(ex, "DSH：判断网络失败失败（按非网络处理）")
+            Return False
+        End Try
+    End Function
+
+    ''' <summary>
     ''' 执行一次 <c>dsh plugin</c> 命令。
     ''' </summary>
     ''' <param name="Instance">目标实例。</param>
@@ -1838,26 +1954,34 @@ Public Module DshPluginMarket
                         If e.Data Is Nothing Then Return
                         TrackTail(tail, e.Data)
                         Logger.Info($"DSH[plugin] {e.Data}")
+                        ReportPnpmLine(Progress, e.Data, ActionName)
                     End Sub
                 AddHandler p.ErrorDataReceived,
                     Sub(sender, e)
                         If e.Data Is Nothing Then Return
                         TrackTail(tail, e.Data)
                         Logger.Warn($"DSH[plugin] {e.Data}")
+                        ReportPnpmLine(Progress, e.Data, ActionName)
                     End Sub
 
                 p.Start()
                 p.BeginOutputReadLine()
                 p.BeginErrorReadLine()
 
-                '插件安装要下载依赖，给足时间（10 分钟）
-                If Not p.WaitForExit(600000) Then
+                ' 插件安装要下载依赖，给足时间。
+                ' ⚠️ 从 10 分钟放宽到 30 分钟：国内直连 npmjs.org 实测会出现
+                '    单次请求 150 秒（`Request took 150672ms`）、
+                '    下载速度 25 KiB/s 的情况，10 分钟**真的不够** ——
+                '    会被误判成"超时"然后杀掉一个其实在正常推进的安装，
+                '    留下一半装好的环境。宁可等久一点，也不要半途而废。
+                If Not p.WaitForExit(1800000) Then
                     Try
                         p.Kill()
                     Catch
                     End Try
                     Throw New InvalidOperationException(
-                        $"{ActionName}超时（超过 10 分钟）。最后输出：" & vbCrLf &
+                        $"{ActionName}超时（超过 30 分钟）。这通常是网络问题 —— " &
+                        "可以换个镜像源后重试。最后输出：" & vbCrLf &
                         String.Join(vbCrLf, tail))
                 End If
                 exitCode = p.ExitCode
@@ -1891,6 +2015,17 @@ Public Module DshPluginMarket
                 hint = vbCrLf & vbCrLf &
                        "该插件的依赖需要跑安装脚本，而 pnpm 默认拦截。" & vbCrLf &
                        $"请把错误里列出的包名加进 {Path.Combine(workDir, "pnpm-workspace.yaml")} 的 allowBuilds 后重试。"
+            End If
+
+            ' ⭐ 网络类失败 → 主动提示换源
+            ' 这是国内用户最常遇到的失败原因（直连 npmjs.org 超时 / 连接被重置），
+            ' 而"换个镜像源"往往一次就好。不提示的话用户只会以为是软件坏了。
+            If IsNetworkFailure(tail) Then
+                Dim cur As DshRegistry.DshMirror = DshRegistry.DshCurrentMirror
+                hint &= vbCrLf & vbCrLf &
+                        "看起来是**网络问题**（下载超时或连接被重置），不是插件本身的问题。" & vbCrLf &
+                        $"当前用的是「{cur.Name}」。建议换成国内镜像源后重试：" & vbCrLf &
+                        "「下载 → 镜像版本 → 镜像源」里选「npmmirror（淘宝）」或「腾讯云镜像」。"
             End If
 
             Throw New InvalidOperationException(

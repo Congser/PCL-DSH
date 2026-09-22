@@ -627,8 +627,16 @@ Public Module ModDSH
                 If Not DshIsInsideInstancesDir(home) Then
                     Logger.Error($"DSH：拒绝删除实例数据目录 —— 路径越界：{home}")
                 ElseIf Directory.Exists(home) Then
-                    Directory.Delete(home, True)
-                    Logger.Info($"DSH：已删除实例数据目录 {home}")
+                    ' ⭐ 用健壮删除：实例数据里的 attachments 是内容寻址存储，
+                    '    文件带 ReadOnly 属性，而 Directory.Delete 遇到只读文件
+                    '    会直接抛 UnauthorizedAccessException（不是权限问题，
+                    '    所以"以管理员运行"也没用）。见 DeleteDirectoryRobust 的注释。
+                    DshMigrate.DeleteDirectoryRobust(home)
+                    If Directory.Exists(home) Then
+                        Logger.Warn($"DSH：实例数据目录删除后仍存在（可能被占用）：{home}")
+                    Else
+                        Logger.Info($"DSH：已删除实例数据目录 {home}")
+                    End If
                 End If
             Catch ex As Exception
                 '删不掉不算失败 —— 实例已经从列表里移除，残留目录下次可手工清理

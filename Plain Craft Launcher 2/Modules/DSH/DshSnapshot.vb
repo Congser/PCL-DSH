@@ -356,8 +356,9 @@ Public Module DshSnapshot
                     If File.Exists(entryPath) Then
                         File.Copy(entryPath, dst, True)
                     Else
-                        ' 目录：先删掉目标再整体复制（避免新旧内容混在一起）
-                        If Directory.Exists(dst) Then Directory.Delete(dst, True)
+                        ' 目录：先删掉目标再整体复制（避免新旧内容混在一起）。
+                        ' 用健壮删除 —— 目标里可能有 ReadOnly 的附件对象。
+                        If Directory.Exists(dst) Then DshMigrate.DeleteDirectoryRobust(dst)
                         DshMigrate.DshCopyTreePreservingLinks(entryPath, dst)
                     End If
                     restored += 1
@@ -431,7 +432,17 @@ Public Module DshSnapshot
                 Return "快照路径越界，拒绝删除。"
             End If
 
-            If Directory.Exists(target.Dir) Then Directory.Delete(target.Dir, True)
+            If Directory.Exists(target.Dir) Then
+                ' ⭐ 必须用健壮删除：快照里含 attachments（内容寻址存储，文件带 ReadOnly
+                '    属性），而 Directory.Delete 遇到只读文件会直接抛 UnauthorizedAccessException。
+                '    这也解释了为什么"以管理员身份运行"没用 —— 那不是权限问题。
+                DshMigrate.DeleteDirectoryRobust(target.Dir)
+            End If
+            If Directory.Exists(target.Dir) Then
+                ' 清完属性还删不掉，才是真的被占用/权限问题
+                Logger.Error($"DSH：快照目录删除后仍然存在：{target.Dir}")
+                Return "删除失败：目录仍被占用。请关闭可能正在使用它的程序（资源管理器预览、杀毒软件）后重试。"
+            End If
             Logger.Info($"DSH：已删除快照 {SnapshotId}")
             Return Nothing
         Catch ex As Exception

@@ -797,6 +797,8 @@
     <Compile Include="Modules\DSH\DshLogAi.vb" />
     <!-- 对话历史跨实例复制（合并 + 只补缺） -->
     <Compile Include="Modules\DSH\DshSessionCopy.vb" />
+    <!-- 插件配置跨实例复制（复用「从其他环境导入」） -->
+    <Compile Include="Modules\DSH\DshPluginCopy.vb" />
     <!-- ── PCL_DSH：DSH 页面 ── -->
     <Compile Include="Pages\PageDSH\PageDSHLeft.xaml.vb">
       <DependentUpon>PageDSHLeft.xaml</DependentUpon>
