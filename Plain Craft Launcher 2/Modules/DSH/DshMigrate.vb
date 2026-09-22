@@ -753,6 +753,12 @@ Public Module DshMigrate
         Dim totalFiles As Integer = CountFiles(SourceRoot)
         Dim done As Integer = 0
 
+        ' ⚠️ 日志节流：可能遍历几十万个文件，若某类错误反复发生，
+        '    逐条记日志会把日志刷爆并显著拖慢复制。
+        '    只记前几条，之后累计数量统一报一次。
+        Dim warnCount As Integer = 0
+        Const MaxWarn As Integer = 5
+
         Dim stack As New Stack(Of KeyValuePair(Of String, String))
         stack.Push(New KeyValuePair(Of String, String)(SourceRoot.TrimEnd(BS), TargetRoot.TrimEnd(BS)))
 
@@ -768,7 +774,10 @@ Public Module DshMigrate
             Try
                 If Not Directory.Exists(dstDir) Then Directory.CreateDirectory(dstDir)
             Catch ex As Exception
-                Logger.Warn($"DSH：创建目标目录失败（{dstDir}）：{ex.Message}")
+                If warnCount < MaxWarn Then
+                    Logger.Warn($"DSH：创建目标目录失败（{dstDir}）：{ex.Message}")
+                End If
+                warnCount += 1
                 Continue While
             End Try
 
@@ -777,7 +786,10 @@ Public Module DshMigrate
             Try
                 files = Directory.GetFiles(srcDir)
             Catch ex As Exception
-                Logger.Warn($"DSH：枚举源目录失败（{srcDir}）：{ex.Message}")
+                If warnCount < MaxWarn Then
+                    Logger.Warn($"DSH：枚举源目录失败（{srcDir}）：{ex.Message}")
+                End If
+                warnCount += 1
             End Try
 
             For Each filePath In files
@@ -807,7 +819,10 @@ Public Module DshMigrate
                         ' 大小读不到就算了，只是个进度展示
                     End Try
                 Catch ex As Exception
-                    Logger.Warn($"DSH：复制文件失败（{filePath}）：{ex.Message}")
+                    If warnCount < MaxWarn Then
+                        Logger.Warn($"DSH：复制文件失败（{filePath}）：{ex.Message}")
+                    End If
+                    warnCount += 1
                 End Try
 
                 done += 1
@@ -825,7 +840,10 @@ Public Module DshMigrate
             Try
                 dirs = Directory.GetDirectories(srcDir)
             Catch ex As Exception
-                Logger.Warn($"DSH：枚举子目录失败（{srcDir}）：{ex.Message}")
+                If warnCount < MaxWarn Then
+                    Logger.Warn($"DSH：枚举子目录失败（{srcDir}）：{ex.Message}")
+                End If
+                warnCount += 1
             End Try
 
             For Each subDir In dirs
@@ -850,6 +868,11 @@ Public Module DshMigrate
                 stack.Push(New KeyValuePair(Of String, String)(subDir, dstSub))
             Next
         End While
+
+        ' 汇总被节流掉的警告 —— 只报总数，不逐条刷
+        If warnCount > MaxWarn Then
+            Logger.Warn($"DSH：复制期间共发生 {warnCount} 次错误（{SourceRoot} → {TargetRoot}），已省略明细")
+        End If
 
         ' ── 第二趟：统一重建符号链接 ──
         ' ⭐ 为什么必须放到复制之后（实测踩过，第一版就是错的）：
@@ -1113,6 +1136,11 @@ Public Module DshMigrate
         Dim total As Long = 0
         Dim stack As New Stack(Of String)
         stack.Push(Root)
+        ' ⚠️ 日志节流：这个函数可能遍历几十万个文件，若某类错误反复发生
+        '    （比如权限问题），逐条记日志会把日志刷爆并拖慢遍历。
+        '    这里只记前几条，之后只累计数量。
+        Dim warnCount As Integer = 0
+        Const MaxWarn As Integer = 3
         While stack.Count > 0
             Dim dir = stack.Pop()
             Try
@@ -1127,7 +1155,10 @@ Public Module DshMigrate
                     End Try
                 Next
             Catch ex As Exception
-                Logger.Warn($"DSH：统计目录大小失败（{dir}）：{ex.Message}")
+                If warnCount < MaxWarn Then
+                    Logger.Warn($"DSH：统计目录大小失败（{dir}）：{ex.Message}")
+                End If
+                warnCount += 1
             End Try
             Try
                 For Each subDir In Directory.GetDirectories(dir)
@@ -1142,9 +1173,15 @@ Public Module DshMigrate
                     If Not isLink Then stack.Push(subDir)
                 Next
             Catch ex As Exception
-                Logger.Warn($"DSH：统计子目录失败（{dir}）：{ex.Message}")
+                If warnCount < MaxWarn Then
+                    Logger.Warn($"DSH：统计子目录失败（{dir}）：{ex.Message}")
+                End If
+                warnCount += 1
             End Try
         End While
+        If warnCount > MaxWarn Then
+            Logger.Warn($"DSH：统计目录大小期间共发生 {warnCount} 次枚举失败（{Root}）")
+        End If
         Return total
     End Function
 

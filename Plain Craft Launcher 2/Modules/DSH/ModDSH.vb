@@ -209,15 +209,41 @@ Public Module ModDSH
         End Get
     End Property
 
-    ''' <summary>dsh 安装目录（pnpm 的 node_modules 落点，**所有实例共享**）。</summary>
+    ''' <summary>
+    ''' dsh 安装目录（pnpm 的 node_modules 落点，**所有实例共享**）。
+    ''' </summary>
     ''' <remarks>
-    ''' ⚠️ 这是**官方槽位**的固定落点，`pnpm add` 永远装到这里，不随切换而变。
-    ''' 当前实际使用的是哪个运行时由 <see cref="DshRuntimeSlot.DshSlotActive"/> 决定 ——
-    ''' 两者刻意分开，否则切到导入的槽位后再装官方版本会装进导入包的目录里。
+    ''' ⚠️ 这是**旧版遗留的单例目录**，`pnpm add` **不再**装到这里。
+    '''
+    ''' 为什么改：这个目录是唯一的，装新版本时 `pnpm add` 会在同一目录里
+    ''' **就地覆盖**旧版本 —— 于是"插件不适配新版本"时用户**退不回去**，
+    ''' 因为旧版本已经被删了。
+    '''
+    ''' 现在新装的版本进 <see cref="DshVersionsDir"/> 下各自独立的目录
+    ''' （<c>runtime\versions\&lt;版本号&gt;\</c>），多版本可以并存、随时切换。
+    '''
+    ''' 这个旧目录**保留**，因为它可能还装着用户唯一的运行时 ——
+    ''' 直接删掉会让老用户升级后打不开程序。它被当作一个普通槽位
+    ''' （id = <c>npm</c>）继续参与枚举与切换，用户想清理时在界面上删即可。
     ''' </remarks>
     Public ReadOnly Property DshInstallDir As String
         Get
             Return DshRuntimeDir & "dsh\"
+        End Get
+    End Property
+
+    ''' <summary>
+    ''' 多版本运行时根目录（每个 npm 装的版本在其中占一个 <c>&lt;版本号&gt;\</c>）。
+    ''' </summary>
+    ''' <remarks>
+    ''' ⭐ 这是「多版本并存」的落点：装 v1.2 和 v1.3 会分别进
+    ''' <c>versions\1.2.0\</c> 与 <c>versions\1.3.0\</c>，互不覆盖。
+    ''' 装完**不会自动切换** —— 当前用的是哪个由
+    ''' <see cref="DshRuntimeSlot.DshSlotActive"/> 决定，用户显式点才切。
+    ''' </remarks>
+    Public ReadOnly Property DshVersionsDir As String
+        Get
+            Return DshRuntimeDir & "versions\"
         End Get
     End Property
 
@@ -317,12 +343,16 @@ Public Module ModDSH
 
     ''' <summary>确保所有全局目录存在。</summary>
     Public Sub DshEnsureDirectories()
-        For Each dir As String In {
-            DshRoot, DshRuntimeDir, DshInstallDir, DshInstancesDir}
+        ' 注意：DshInstallDir（旧单例目录）**不在这里预创建** ——
+        ' 新装版本不再往那里装东西，无条件创建会让新用户也看到一个空槽位。
+        ' 需要它的地方（旧槽位导入、体检）会自己确保存在。
+        ' ⚠️ 变量名不叫 dir —— Dir 是 VB 内置函数（见项目约定里那个坑家族）
+        For Each dirPath As String In {
+            DshRoot, DshRuntimeDir, DshVersionsDir, DshImportedDir, DshInstancesDir}
             Try
-                If Not Directory.Exists(dir) Then Directory.CreateDirectory(dir)
+                If Not Directory.Exists(dirPath) Then Directory.CreateDirectory(dirPath)
             Catch ex As Exception
-                Logger.Error(ex, $"创建 DSH 目录失败：{dir}")
+                Logger.Error(ex, $"创建 DSH 目录失败：{dirPath}")
             End Try
         Next
     End Sub

@@ -385,19 +385,85 @@ Public Module DshInstaller
     End Sub
 
     ''' <summary>
-    ''' 安装（或切换到）指定版本的 dsh。
+    ''' 在指定安装目录里写入 pnpm 的 allowBuilds 配置。
+    ''' </summary>
+    ''' <param name="InstallDir">
+    ''' 目标安装目录。**必须显式传入** —— 多版本并存后每个版本有自己的目录，
+    ''' 写错目录会导致那个版本装不上（pnpm 以 ERR_PNPM_IGNORED_BUILDS 拒绝）。
+    ''' </param>
+    ''' <remarks>
+    ''' 这里刻意**逐个列举**而不是用 <c>--config.strict-dep-builds=false</c> 之类的全局开关，
+    ''' 以便把攻击面限制在 dsh 实际需要的范围内。
+    ''' </remarks>
+    Private Sub EnsureAllowBuilds(InstallDir As String)
+        If String.IsNullOrWhiteSpace(InstallDir) Then Return
+        Dim target As String = Path.Combine(InstallDir, "pnpm-workspace.yaml")
+
+        ' pnpm 模板里给的是占位符（"set this to true or false"），必须覆写为 true。
+        ' 若文件已存在但内容含占位符，同样要覆写。
+        Dim needWrite As Boolean = True
+        If FileExistsSafe(target) Then
+            Try
+                Dim existing As String = File.ReadAllText(target)
+                If Not existing.Contains("set this to true or false") Then
+                    '已经是有效配置，但可能缺少我们需要的项 —— 逐项检查
+                    needWrite = AllowedBuilds.Any(Function(p) Not existing.Contains($"'{p}'") AndAlso Not existing.Contains($"{p}:"))
+                End If
+            Catch ex As Exception
+                Logger.Warn(ex, "读取 pnpm-workspace.yaml 失败，将直接覆写")
+                needWrite = True
+            End Try
+        End If
+
+        If Not needWrite Then
+            Logger.Info($"DSH：pnpm allowBuilds 已就绪，跳过写入（{InstallDir}）")
+            Return
+        End If
+
+        Dim sb As New StringBuilder()
+        sb.AppendLine("# 由 PCL_DSH 自动生成：放行 dsh 原生依赖的构建脚本。")
+        sb.AppendLine("# 手工编辑后请勿删除本段，否则 pnpm 会以 ERR_PNPM_IGNORED_BUILDS 拒绝安装。")
+        sb.AppendLine("allowBuilds:")
+        For Each pkg As String In AllowedBuilds
+            sb.AppendLine($"  '{pkg}': true")
+        Next
+
+        Try
+            If Not Directory.Exists(InstallDir) Then
+                Directory.CreateDirectory(InstallDir)
+            End If
+            File.WriteAllText(target, sb.ToString(), New UTF8Encoding(False))
+            Logger.Info($"DSH：已写入 pnpm allowBuilds（{AllowedBuilds.Length} 项）→ {target}")
+        Catch ex As Exception
+            '写不进去不直接失败 —— 让 pnpm 去报它自己的错，信息更准确
+            Logger.Warn(ex, $"写入 pnpm-workspace.yaml 失败：{target}")
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' 安装指定版本的 dsh（**装到该版本自己的目录，不影响其他版本**）。
     ''' </summary>
     ''' <param name="Version">目标版本，例如 <c>0.1.6-alpha.2</c>。传 Nothing 用锁定版本。</param>
     ''' <param name="RegistryUrl">npm 注册表地址。传 Nothing 用 pnpm 默认（官方源）。</param>
     ''' <param name="Progress">进度回调。</param>
+    ''' <param name="TargetDir">
+    ''' 安装到哪个目录。传 Nothing 则自动推导为
+    ''' <c>runtime\versions\&lt;解析后的版本号&gt;\</c>。
+    ''' </param>
     ''' <remarks>
+    ''' ⭐ **这是"多版本并存"的关键改动**：
+    ''' 旧版把 pnpm 的工作目录固定成 <c>runtime\dsh\</c>（唯一目录），
+    ''' 于是装新版本时会**就地覆盖**旧版本 —— 用户遇到"插件不适配"想退回时
+    ''' 发现旧版本已经没了。
+    '''
+    ''' 现在每个版本装进**自己的目录**，互不覆盖，可以随时切换回去。
+    '''
     ''' 阻塞调用，请放在后台线程。
-    ''' pnpm 会就地覆盖 <c>node_modules</c>，所以「切换版本」= 再 add 一次，
-    ''' 不需要先卸载 —— 这也是 pnpm 的常规用法。
     ''' </remarks>
     Public Sub InstallDshVersion(Version As String,
                                  Optional RegistryUrl As String = Nothing,
-                                 Optional Progress As DshInstallProgressHandler = Nothing)
+                                 Optional Progress As DshInstallProgressHandler = Nothing,
+                                 Optional TargetDir As String = Nothing)
         ModDSH.DshEnsureDirectories()
 
         ' dsh 需要 pnpm 才能装
@@ -422,26 +488,39 @@ Public Module DshInstaller
             .PnpmExe = pnpmExe
         }
 
-        InstallDsh(runtime, Progress, Version, RegistryUrl)
+        ' 目标目录：不传就按版本号推导到 versions\<版本>\
+        Dim targetVersion As String =
+            If(String.IsNullOrWhiteSpace(Version), ModDSH.DshVersion, Version.Trim())
+        Dim installDir As String = TargetDir
+        If String.IsNullOrWhiteSpace(installDir) Then
+            installDir = ModDSH.DshVersionsDir & targetVersion & "\"
+        End If
+
+        InstallDsh(runtime, Progress, Version, RegistryUrl, installDir)
         Report(Progress, DshInstallStage.Done, "dsh 安装完成", 1)
     End Sub
 
     ''' <summary>
-    ''' 用 pnpm 把指定版本的 dsh 安装到私有目录。
+    ''' 用 pnpm 把指定版本的 dsh 安装到指定目录。
     ''' </summary>
+    ''' <param name="InstallDir">
+    ''' 安装目录。**每个版本一个独立目录**，这样多版本才能并存。
+    ''' </param>
     ''' <remarks>
     ''' 关键点：
     '''   - 用 `pnpm add` 而非 `pnpm install`，并显式固定版本号
     '''   - 必须先写 <c>pnpm-workspace.yaml</c> 的 <c>allowBuilds</c> 放行原生依赖的构建脚本，
     '''     否则 pnpm v10+ 会以 `ERR_PNPM_IGNORED_BUILDS` **直接失败**（详见 <see cref="EnsureAllowBuilds"/>）
-    '''   - 工作目录 = <see cref="ModDSH.DshInstallDir"/>
+    '''   - 工作目录 = <paramref name="InstallDir"/>（**不再是**固定的
+    '''     <see cref="ModDSH.DshInstallDir"/> —— 那样会覆盖旧版本）
     '''   - PATH 前置 pnpm 所在目录，因为 pnpm 可能会去调 node
     '''   - **超时必须给足** —— POC 实测 17m34s
     ''' </remarks>
     Private Sub InstallDsh(Runtime As DshRuntime.DshRuntimeInfo,
                            Progress As DshInstallProgressHandler,
                            Optional Version As String = Nothing,
-                           Optional RegistryUrl As String = Nothing)
+                           Optional RegistryUrl As String = Nothing,
+                           Optional InstallDir As String = Nothing)
         If String.IsNullOrWhiteSpace(Runtime.PnpmExe) Then
             Throw New InvalidOperationException(
                 "缺少 pnpm，无法安装 dsh。请检查网络后重试。")
@@ -449,13 +528,20 @@ Public Module DshInstaller
 
         Dim targetVersion As String =
             If(String.IsNullOrWhiteSpace(Version), ModDSH.DshVersion, Version.Trim())
+        ' 兜底：没传目录就用版本化目录（**绝不**回退到旧的单例目录）
+        Dim workDir As String = InstallDir
+        If String.IsNullOrWhiteSpace(workDir) Then
+            workDir = ModDSH.DshVersionsDir & targetVersion & "\"
+        End If
+        If Not Directory.Exists(workDir) Then Directory.CreateDirectory(workDir)
+
         Dim spec As String = $"{ModDSH.DshPackageName}@{targetVersion}"
         Report(Progress, DshInstallStage.InstallingDeps,
                $"正在安装 {spec}（首次安装需下载约 480 个包，可能耗时十几分钟，请耐心等待）…", -1)
-        Logger.Info($"DSH：开始安装 {spec}，超时上限 {InstallTimeoutMs / 60000} 分钟")
+        Logger.Info($"DSH：开始安装 {spec} → {workDir}，超时上限 {InstallTimeoutMs / 60000} 分钟")
 
-        ' 放行原生依赖的构建脚本（必须在 pnpm add 之前写好）
-        EnsureAllowBuilds()
+        ' 放行原生依赖的构建脚本（必须在 pnpm add 之前写好，且要写进**这个版本自己的**目录）
+        EnsureAllowBuilds(workDir)
 
         ' pnpm 的调用方式取决于它是 .exe 还是 .cmd
         Dim pnpmExe = Runtime.PnpmExe
@@ -463,7 +549,7 @@ Public Module DshInstaller
 
         Dim psi As New ProcessStartInfo() With {
             .FileName = If(isCmdShell, "cmd.exe", pnpmExe),
-            .WorkingDirectory = ModDSH.DshInstallDir,
+            .WorkingDirectory = workDir,
             .UseShellExecute = False,
             .RedirectStandardOutput = True,
             .RedirectStandardError = True,

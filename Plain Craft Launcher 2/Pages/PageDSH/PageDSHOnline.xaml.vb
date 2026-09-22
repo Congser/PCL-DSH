@@ -535,7 +535,11 @@ Public Class PageDSHOnline
             Return
         End If
 
-        Dim problem As String = DshCredentials.ValidateApiKeyShape(input)
+        ' ⭐ 官方 API 要求 sk- 前缀（能帮用户抓复制错误）；
+        ' 自定义网关**不能**卡前缀 —— 自建 one-api / OpenRouter / 各类中转的
+        ' Key 格式千差万别，硬卡会让用户根本填不进去。
+        Dim problem As String = DshCredentials.ValidateApiKeyShape(
+            input, RequireOfficialPrefix:=provider.IsOfficial)
         If problem IsNot Nothing Then
             Hint(problem, HintType.Red)
             Return
@@ -599,7 +603,9 @@ Public Class PageDSHOnline
             Return
         End If
 
-        Dim problem As String = DshCredentials.ValidateApiKeyShape(input)
+        ' 同样按接入方式区分：自定义网关不卡 sk- 前缀（见 SetProviderKey 的注释）
+        Dim problem As String = DshCredentials.ValidateApiKeyShape(
+            input, RequireOfficialPrefix:=provider Is Nothing OrElse provider.IsOfficial)
         If problem IsNot Nothing Then
             Hint(problem, HintType.Red)
             Return

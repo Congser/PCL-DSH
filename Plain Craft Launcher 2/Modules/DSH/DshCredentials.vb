@@ -171,25 +171,43 @@ Public Module DshCredentials
     ''' <summary>
     ''' 校验用户输入的 API Key 是否「看起来像那么回事」。
     ''' </summary>
+    ''' <param name="Value">待校验的密钥。</param>
+    ''' <param name="RequireOfficialPrefix">
+    ''' 是否要求以 <c>sk-</c> 开头。
+    ''' <list type="bullet">
+    ''' <item><b>True</b>（默认）—— 官方 DeepSeek 用。它确实有固定前缀，
+    '''       这个检查能帮用户抓出「粘了半截」「粘错东西」</item>
+    ''' <item><b>False</b> —— 自定义网关用。自建 one-api / OpenRouter /
+    '''       各类中转的 Key 格式千差万别（<c>sk-or-v1-...</c>、纯 hex、
+    '''       <c>用户名:密码</c>……），硬卡 <c>sk-</c> 会让用户**根本填不进去**</item>
+    ''' </list>
+    ''' </param>
     ''' <returns>合法返回 Nothing；否则返回给用户看的错误说明。</returns>
     ''' <remarks>
     ''' 只做**形状校验**，不联网 —— 真正的有效性由 <see cref="ProbeApiKey"/> 负责。
     ''' 形状校验存在的意义是拦住最常见的误操作：粘贴了空串、粘了半截、
     ''' 或者把别的东西（比如 GitHub token）粘进来了。
+    '''
+    ''' ⚠️ 对自定义网关，形状校验**刻意放宽到最小必要程度** ——
+    ''' 因为「格式对不对」这个判断在开放生态里根本不成立，
+    ''' 该由 <see cref="ProbeApiKey"/> 用真实请求去回答。
     ''' </remarks>
-    Public Function ValidateApiKeyShape(Value As String) As String
+    Public Function ValidateApiKeyShape(Value As String,
+                                        Optional RequireOfficialPrefix As Boolean = True) As String
         Dim v As String = If(Value, "").Trim()
 
         If v.Length = 0 Then
             Return "API Key 不能为空。若要清除已保存的密钥，请点击「清除」按钮。"
         End If
-        If v.Length < 16 Then
+        ' 官方 Key 有固定长度量级，自定义网关的最小长度放宽（某些自建服务只发 8 位）
+        Dim minLength As Integer = If(RequireOfficialPrefix, 16, 8)
+        If v.Length < minLength Then
             Return $"API Key 太短了（当前 {v.Length} 个字符），请检查是否复制完整。"
         End If
         If v.Contains(" ") OrElse v.Contains(vbTab) OrElse v.Contains(vbCr) OrElse v.Contains(vbLf) Then
             Return "API Key 中不应包含空格或换行，请检查是否多复制了内容。"
         End If
-        If Not v.StartsWith("sk-", StringComparison.OrdinalIgnoreCase) Then
+        If RequireOfficialPrefix AndAlso Not v.StartsWith("sk-", StringComparison.OrdinalIgnoreCase) Then
             Return "DeepSeek 的 API Key 通常以 sk- 开头，请确认没有复制错。"
         End If
         Return Nothing
@@ -545,10 +563,14 @@ Public Module DshCredentials
     '''
     ''' ⚠️ 这会**覆盖**所有实例，包括用户单独设置过的那些。
     ''' UI 上必须把这一点讲明；想保留个别实例的独立密钥就不要走这个入口。
+    '''
+    ''' ⚠️ 这里**只做最小校验，不卡 <c>sk-</c> 前缀** —— 因为本函数是通用底层，
+    ''' 官方和自定义网关都会走它。是否要求前缀由**调用方**（界面层）决定，
+    ''' 那边知道当前是哪个 provider。底层保持中立，不替上层做业务判断。
     ''' </remarks>
     Public Function SyncKeyToAllInstances(Ref As String, Value As String,
                                           Optional ByRef Failed As List(Of String) = Nothing) As Integer
-        Dim problem As String = ValidateApiKeyShape(Value)
+        Dim problem As String = ValidateApiKeyShape(Value, RequireOfficialPrefix:=False)
         If problem IsNot Nothing Then Throw New ArgumentException(problem, NameOf(Value))
         If Not IsValidRefName(Ref) Then
             Throw New ArgumentException($"非法的凭据名「{Ref}」。", NameOf(Ref))
@@ -669,7 +691,9 @@ Public Module DshCredentials
     ''' </remarks>
     Public Function ProbeApiKey(ApiKey As String, Optional TimeoutMs As Integer = 15000,
                                 Optional BaseUrl As String = Nothing) As String
-        Dim shapeProblem As String = ValidateApiKeyShape(ApiKey)
+        ' 探测是通用能力（官方与自定义网关都用），所以不卡 sk- 前缀 ——
+        ' 传进来的 Key 已经过界面层的形状校验，这里只拦明显非法的（空 / 太短 / 含空白）
+        Dim shapeProblem As String = ValidateApiKeyShape(ApiKey, RequireOfficialPrefix:=False)
         If shapeProblem IsNot Nothing Then Return shapeProblem
 
         Dim baseAddr As String = If(String.IsNullOrWhiteSpace(BaseUrl), DeepSeekApiBase, BaseUrl.TrimEnd("/"c))

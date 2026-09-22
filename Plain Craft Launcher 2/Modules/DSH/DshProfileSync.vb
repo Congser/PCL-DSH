@@ -83,6 +83,20 @@ Public Module DshProfileSync
     ''' <item><c>certs</c> —— 本机证书，换机器后本来就失效</item>
     ''' </list>
     ''' </remarks>
+    ''' <summary>
+    ''' 实例级数据项清单（**导入导出共用**）。
+    ''' </summary>
+    ''' <remarks>
+    ''' ⚠️ 导出侧必须用**同一份**清单，否则会出现
+    ''' "导出时带了这个、导入时却不认"的不对称。
+    ''' 所以这里把它公开出来，而不是让导出模块自己维护一份。
+    ''' </remarks>
+    Public ReadOnly Property DshSyncDataEntriesPublic As String()
+        Get
+            Return DshSyncDataEntries
+        End Get
+    End Property
+
     Private ReadOnly DshSyncDataEntries As String() = {
         "sessions",
         "storages",

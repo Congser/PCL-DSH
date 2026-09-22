@@ -799,6 +799,12 @@
     <Compile Include="Modules\DSH\DshSessionCopy.vb" />
     <!-- 插件配置跨实例复制（复用「从其他环境导入」） -->
     <Compile Include="Modules\DSH\DshPluginCopy.vb" />
+    <!-- 环境导出（与导入对称的能力） -->
+    <Compile Include="Modules\DSH\DshEnvExport.vb" />
+    <!-- 环境导入（把导出的包导回实例） -->
+    <Compile Include="Modules\DSH\DshEnvImport.vb" />
+    <!-- 勾选对话框（导入导出共用） -->
+    <Compile Include="Modules\DSH\DshPartPicker.vb" />
     <!-- ── PCL_DSH：DSH 页面 ── -->
     <Compile Include="Pages\PageDSH\PageDSHLeft.xaml.vb">
       <DependentUpon>PageDSHLeft.xaml</DependentUpon>

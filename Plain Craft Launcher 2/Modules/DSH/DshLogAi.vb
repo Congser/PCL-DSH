@@ -83,14 +83,29 @@ Public Module DshLogAi
     ''' <param name="Raw">原始日志。</param>
     ''' <param name="Count">被替换的处数（出参）。</param>
     ''' <remarks>
-    ''' 覆盖四类：
+    ''' ⭐ 分两层，**已知值替换在前，正则兜底在后**：
+    '''
+    ''' <b>第一层：已知值精确替换（主力）</b>
+    ''' 从凭据文件读出用户**实际保存过的所有密钥**，逐个做精确字符串替换。
+    ''' 为什么这层最重要：通用正则在**开放格式**下必然有漏 ——
+    ''' 自定义网关的 Key 可能是纯 hex、<c>用户名:密码</c>、任意形态，
+    ''' 靠"猜前缀"永远猜不全。而"我们存过哪些密钥"是**确定信息**，
+    ''' 用它替换**零漏**。
+    '''
+    ''' <b>第二层：通用正则（兜底）</b>
+    ''' 覆盖没被存进凭据文件、但可能出现在日志里的密钥形态：
     ''' <list type="number">
-    ''' <item><c>sk-</c> 开头的 API Key（DeepSeek / OpenAI 系）</item>
+    ''' <item><c>sk-</c> 开头的（DeepSeek / OpenAI 系）</item>
+    ''' <item><c>sk_</c> / <c>key-</c> / <c>api-</c> 等变体前缀</item>
+    ''' <item>长 hex 串（32 位以上，很多自建网关用这种）</item>
     ''' <item><c>Bearer xxx</c> / <c>Authorization: xxx</c> 头</item>
     ''' <item><c>apiKey: xxx</c> / <c>api_key=xxx</c> 这类键值</item>
     ''' <item>带用户名的路径（<c>C:\Users\张三\</c> → <c>C:\Users\****\</c>）——
     '''       这是隐私，不是密钥，但同样不该外发</item>
     ''' </list>
+    '''
+    ''' ⚠️ 这个函数是「放开 Key 格式校验」的**安全前提** ——
+    ''' 两者必须同时生效，否则自定义网关的密钥会随日志发给 DeepSeek。
     ''' </remarks>
     Public Function DshRedactLog(Raw As String, ByRef Count As Integer) As String
         Count = 0
@@ -98,8 +113,22 @@ Public Module DshLogAi
 
         Dim text As String = Raw
 
+        ' ═══ 第一层：已知值精确替换（主力，零漏）═══
+        text = RedactKnownSecrets(text, Count)
+
+        ' ═══ 第二层：通用正则（兜底）═══
+
         ' ① sk- 开头的密钥（保留前 4 位便于用户对照，其余打掉）
         text = ReplaceByRegex(text, "(sk-[A-Za-z0-9_\-]{4})[A-Za-z0-9_\-]{8,}", "$1****", Count)
+
+        ' ①b 其他常见前缀变体：sk_ / key- / api- / token-
+        '    （自定义网关常用，原规则只认 sk- 会漏）
+        text = ReplaceByRegex(text,
+            "(?i)\b((?:sk_|key-|api-|token-)[A-Za-z0-9_\-]{3})[A-Za-z0-9_\-]{8,}", "$1****", Count)
+
+        ' ①c 长 hex 串（32 位以上）—— 很多自建网关直接发一串 hex
+        '    用边界断言避免误伤正常的 hash 值展示（但那种也该打码）
+        text = ReplaceByRegex(text, "\b([0-9a-fA-F]{8})[0-9a-fA-F]{24,}\b", "$1****", Count)
 
         ' ② Authorization / Bearer
         text = ReplaceByRegex(text, "(?i)(bearer\s+)[A-Za-z0-9_\-\.]{8,}", "$1****", Count)
@@ -112,6 +141,83 @@ Public Module DshLogAi
         text = ReplaceByRegex(text, "(?i)([A-Z]:\\+Users\\+)[^\\\s]+", "$1****", Count)
 
         Return text
+    End Function
+
+    ''' <summary>
+    ''' 把日志里出现过的**已知密钥**（用户实际保存的）精确替换掉。
+    ''' </summary>
+    ''' <param name="Text">待处理文本。</param>
+    ''' <param name="Count">累加的替换处数。</param>
+    ''' <remarks>
+    ''' 遍历所有实例的凭据文件，读出全部密钥值，逐个做精确替换。
+    '''
+    ''' ⚠️ 几个刻意的处理：
+    ''' <list type="bullet">
+    ''' <item>**长的先替换** —— 如果两个密钥有前缀包含关系（<c>abc123</c> 与
+    '''       <c>abc123456</c>），先替换短的会把长的切碎，导致长的漏网</item>
+    ''' <item>**跳过过短的值**（&lt; 8 字符）—— 太短的串可能是普通单词，
+    '''       全局替换会把日志改得面目全非，反而失去诊断价值</item>
+    ''' <item>**每个值替换全部出现处**，不只是第一处</item>
+    ''' <item>失败不影响主流程（读凭据出错就跳过那一项）——
+    '''       脱敏是尽力而为，但**不能因为出错就原样外发**；
+    '''       所以下面还有第二层正则兜底</item>
+    ''' </list>
+    ''' </remarks>
+    Private Function RedactKnownSecrets(Text As String, ByRef Count As Integer) As String
+        Dim result As String = Text
+        Try
+            Dim secrets As New List(Of String)
+            Try
+                ' 主实例 + 所有实例的凭据
+                Dim homes As New List(Of String)
+                Try
+                    For Each inst In ModDSH.DshInstances
+                        If inst IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(inst.HomeDir) Then
+                            homes.Add(inst.HomeDir)
+                        End If
+                    Next
+                Catch ex As Exception
+                    Logger.Warn(ex, "DSH：枚举实例以脱敏失败（继续用主实例）")
+                End Try
+                homes.Add(Nothing)   ' Nothing = 主实例
+
+                For Each home In homes
+                    Try
+                        Dim refs As Dictionary(Of String, String) = DshCredentials.ReadRefs(home)
+                        For Each kv In refs
+                            Dim v As String = kv.Value
+                            If Not String.IsNullOrWhiteSpace(v) AndAlso v.Trim().Length >= 8 Then
+                                secrets.Add(v.Trim())
+                            End If
+                        Next
+                    Catch ex As Exception
+                        Logger.Warn(ex, "DSH：读取凭据以脱敏失败（跳过该 home）")
+                    End Try
+                Next
+            Catch ex As Exception
+                Logger.Warn(ex, "DSH：收集已知密钥失败（仅用正则兜底）")
+            End Try
+
+            ' 去重后**按长度降序** —— 长的先替换，避免短的前缀把长的切碎
+            Dim distinct As List(Of String) = secrets.Distinct().OrderByDescending(Function(s) s.Length).ToList()
+            For Each s In distinct
+                Try
+                    Dim n As Integer = 0
+                    Dim idx As Integer = result.IndexOf(s, StringComparison.Ordinal)
+                    While idx >= 0
+                        result = result.Remove(idx, s.Length).Insert(idx, "****")
+                        n += 1
+                        idx = result.IndexOf(s, idx + 4, StringComparison.Ordinal)
+                    End While
+                    Count += n
+                Catch ex As Exception
+                    Logger.Warn(ex, "DSH：替换已知密钥失败（跳过）")
+                End Try
+            Next
+        Catch ex As Exception
+            Logger.Warn(ex, "DSH：已知值脱敏整体失败（仅用正则兜底）")
+        End Try
+        Return result
     End Function
 
     Private Function ReplaceByRegex(Input As String, Pattern As String, Replacement As String,

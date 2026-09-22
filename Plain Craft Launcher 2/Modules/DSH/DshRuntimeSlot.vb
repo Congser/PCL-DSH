@@ -45,8 +45,22 @@ Public Module DshRuntimeSlot
     ''' <summary>槽位类型：导入的本地包。</summary>
     Public Const DshSlotKindImported As String = "imported"
 
-    ''' <summary>npm 槽位的固定 id。</summary>
+    ''' <summary>
+    ''' npm 槽位的固定 id（**旧版遗留的单例目录**）。
+    ''' </summary>
+    ''' <remarks>
+    ''' ⚠️ 新版不再往这里装东西（见 <see cref="ModDSH.DshInstallDir"/> 的注释）。
+    ''' 但保留这个 id 让旧目录仍能作为一个槽位被枚举与切换 ——
+    ''' 老用户升级后那里可能装着他唯一的运行时，直接忽略会让程序打不开。
+    ''' </remarks>
     Public Const DshSlotNpmId As String = "npm"
+
+    ''' <summary>版本化槽位的 id 前缀（<c>ver_&lt;版本号&gt;</c>）。</summary>
+    ''' <remarks>
+    ''' 用前缀而不是裸版本号做 id，是为了避免和导入槽位（<c>imp_</c>）
+    ''' 以及旧单例（<c>npm</c>）撞名，也让 <see cref="DshSlotDirOf"/> 能一眼分辨。
+    ''' </remarks>
+    Public Const DshSlotVersionPrefix As String = "ver_"
 
     ''' <summary>dsh 入口相对于「dsh 基准目录」的路径。</summary>
     ''' <remarks>
@@ -154,10 +168,36 @@ Public Module DshRuntimeSlot
             End Get
         End Property
 
-        ''' <summary>是否是 pnpm 安装的官方槽位。</summary>
+        ''' <summary>是否是 pnpm 安装的官方槽位（含旧单例与版本化）。</summary>
         Public ReadOnly Property IsNpm As Boolean
             Get
                 Return String.Equals(Kind, DshSlotKindNpm, StringComparison.OrdinalIgnoreCase)
+            End Get
+        End Property
+
+        ''' <summary>
+        ''' 是否是**旧版遗留的单例槽位**（id = <c>npm</c>）。
+        ''' </summary>
+        ''' <remarks>
+        ''' ⚠️ 必须和 <see cref="IsNpm"/> 区分开：
+        ''' <list type="bullet">
+        ''' <item><see cref="IsNpm"/> = 所有 pnpm 装的（含版本化）—— 用于"要不要写清单"</item>
+        ''' <item><see cref="IsLegacyNpm"/> = 只有那个旧单例 —— 用于"要不要跳过"</item>
+        ''' </list>
+        ''' 版本化槽位虽然也是 <see cref="IsNpm"/>，但它的目录是扫出来的、
+        ''' 不写清单就会丢，所以**不能**被当成旧单例跳过。
+        ''' </remarks>
+        Public ReadOnly Property IsLegacyNpm As Boolean
+            Get
+                Return String.Equals(Id, DshSlotNpmId, StringComparison.OrdinalIgnoreCase)
+            End Get
+        End Property
+
+        ''' <summary>是否是版本化槽位（<c>ver_&lt;版本号&gt;</c>）。</summary>
+        Public ReadOnly Property IsVersioned As Boolean
+            Get
+                Return Id IsNot Nothing AndAlso
+                       Id.StartsWith(DshSlotVersionPrefix, StringComparison.OrdinalIgnoreCase)
             End Get
         End Property
 
@@ -233,11 +273,28 @@ Public Module DshRuntimeSlot
         End Property
     End Class
 
-    ''' <summary>槽位目录：npm 槽位是固定目录，导入槽位在 <c>imported\</c> 下各占一个。</summary>
+    ''' <summary>
+    ''' 槽位目录：版本化槽位在 <c>versions\</c> 下，导入槽位在 <c>imported\</c> 下。
+    ''' </summary>
+    ''' <remarks>
+    ''' 三类槽位的目录规则：
+    ''' <list type="bullet">
+    ''' <item><c>npm</c> —— **旧版遗留的单例目录** <c>runtime\dsh\</c>。
+    '''       保留是为了老用户升级后仍能启动（那里可能装着他唯一的运行时）</item>
+    ''' <item><c>ver_&lt;版本&gt;</c> —— 新装的版本，各自独立目录，**可并存**</item>
+    ''' <item><c>imp_&lt;id&gt;</c> —— 导入的包</item>
+    ''' </list>
+    ''' </remarks>
     Private Function DshSlotDirOf(SlotId As String) As String
         If String.IsNullOrWhiteSpace(SlotId) Then Return Nothing
+        ' 旧版遗留的单例目录
         If String.Equals(SlotId, DshSlotNpmId, StringComparison.OrdinalIgnoreCase) Then
             Return ModDSH.DshInstallDir
+        End If
+        ' 版本化槽位：ver_<版本号>
+        If SlotId.StartsWith(DshSlotVersionPrefix, StringComparison.OrdinalIgnoreCase) Then
+            Dim ver As String = SlotId.Substring(DshSlotVersionPrefix.Length)
+            Return ModDSH.DshVersionsDir & ver & "\"
         End If
         Return ModDSH.DshImportedDir & SlotId & "\"
     End Function
@@ -249,33 +306,112 @@ Public Module DshRuntimeSlot
     ''' <summary>
     ''' 读取全部槽位。
     ''' </summary>
-    ''' <returns>第一项恒为 npm 槽位，其后是导入槽位。</returns>
+    ''' <returns>旧单例槽位（若存在）在前，然后是版本化槽位、导入槽位。</returns>
     ''' <remarks>
-    ''' npm 槽位的版本号是**实时读磁盘**的，不存清单 ——
-    ''' 否则用户重装一次 dsh，清单里就留了个过期版本号。
+    ''' ⭐ 三类槽位：
+    ''' <list type="number">
+    ''' <item><b>旧单例</b>（<c>npm</c>）—— 只在目录真的存在且可用时才列出。
+    '''       不存在就不占一行（新用户不会有它）</item>
+    ''' <item><b>版本化</b>（<c>ver_&lt;版本&gt;</c>）—— 扫 <c>versions\</c> 目录得出，
+    '''       版本号从各目录的 <c>package.json</c> **实时读**</item>
+    ''' <item><b>导入</b>（<c>imp_&lt;id&gt;</c>）—— 从清单读</item>
+    ''' </list>
+    '''
+    ''' 版本号全部实时读磁盘、不存清单 —— 否则用户重装一次就留个过期版本号。
     ''' </remarks>
     Public Function DshSlotList() As List(Of DshSlotInfo)
         Dim result As New List(Of DshSlotInfo)
 
-        ' ── ① npm 槽位：永远排第一，永远存在 ──
-        Dim npmSlot As New DshSlotInfo With {
-            .Id = DshSlotNpmId,
-            .Kind = DshSlotKindNpm,
-            .EntryRelative = DshSlotEntryRel
-        }
+        ' ── ① 旧单例槽位：目录真的存在才列出 ──
+        '    （新装的版本不再进这里，所以新用户看不到它）
         Try
-            npmSlot.Version = DshRuntime.GetNpmSlotVersion()
+            Dim legacy As New DshSlotInfo With {
+                .Id = DshSlotNpmId,
+                .Kind = DshSlotKindNpm,
+                .EntryRelative = DshSlotEntryRel
+            }
+            If Directory.Exists(ModDSH.DshInstallDir) Then
+                legacy.Version = DshRuntime.GetNpmSlotVersion()
+                result.Add(legacy)
+            End If
         Catch ex As Exception
-            Logger.Warn(ex, "DSH：读取 npm 槽位版本失败")
+            Logger.Warn(ex, "DSH：检查旧单例槽位失败")
         End Try
-        result.Add(npmSlot)
 
-        ' ── ② 导入槽位：从清单读 ──
+        ' ── ② 版本化槽位：扫 versions\ 目录 ──
+        result.AddRange(DshSlotScanVersioned())
+
+        ' ── ③ 导入槽位：从清单读 ──
         result.AddRange(DshSlotReadManifest())
 
-        ' 只有「入口真的存在」的导入槽位才露出来 ——
+        ' ⚠️ 按 id 去重 —— 历史清单里可能残留版本化槽位（早期版本写进去的），
+        '    而它们同时也能被扫出来，不去重会在界面上重复显示。
+        '    保留**第一个**（扫描出来的那份版本号更新，因为它是实时读的）。
+        Dim seen As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+        Dim deduped As New List(Of DshSlotInfo)
+        For Each s In result
+            If s Is Nothing OrElse String.IsNullOrWhiteSpace(s.Id) Then Continue For
+            If seen.Add(s.Id) Then deduped.Add(s)
+        Next
+
+        ' 只有「入口真的存在」的槽位才露出来 ——
         ' 目录被用户手动删掉时，不该还在界面上占一行
-        Return result.Where(Function(s) s.IsNpm OrElse s.IsUsable).ToList()
+        Return deduped.Where(Function(s) s.IsUsable).ToList()
+    End Function
+
+    ''' <summary>
+    ''' 扫描 <c>versions\</c> 目录，把每个版本化运行时变成一个槽位。
+    ''' </summary>
+    ''' <remarks>
+    ''' 版本号从各目录的 <c>package.json</c> 实时读；
+    ''' 读不到就退回目录名（目录名本身就是版本号）——
+    ''' 这样即使 package.json 损坏，用户仍能看到并管理这个槽位。
+    ''' </remarks>
+    Private Function DshSlotScanVersioned() As List(Of DshSlotInfo)
+        Dim result As New List(Of DshSlotInfo)
+        Try
+            Dim root As String = ModDSH.DshVersionsDir
+            If Not Directory.Exists(root) Then Return result
+
+            ' ⚠️ 变量名不叫 dir —— Dir 是 VB 内置函数。
+            '    带 As String 时能编译，但一旦有人改成无类型的 For Each dir In ...，
+            '    就会被解析成调用内置 Dir() 而报 BC30068。统一避开这个家族。
+            For Each dirPath As String In Directory.GetDirectories(root)
+                Try
+                    Dim ver As String = Path.GetFileName(dirPath.TrimEnd("\"c))
+                    If String.IsNullOrWhiteSpace(ver) Then Continue For
+
+                    Dim info As New DshSlotInfo With {
+                        .Id = DshSlotVersionPrefix & ver,
+                        .Kind = DshSlotKindNpm,
+                        .EntryRelative = DshSlotEntryRel,
+                        .Version = DshSlotReadVersionFrom(dirPath)
+                    }
+                    ' 版本号读不到就用目录名兜底
+                    If String.IsNullOrWhiteSpace(info.Version) Then info.Version = ver
+                    result.Add(info)
+                Catch ex As Exception
+                    Logger.Warn(ex, $"DSH：读取版本化槽位失败：{dirPath}")
+                End Try
+            Next
+        Catch ex As Exception
+            Logger.Error(ex, "DSH：扫描版本化槽位目录失败")
+        End Try
+        ' 版本号降序 —— 新版本在前，符合"想用新版"的常见意图
+        Return result.OrderByDescending(Function(s) s.Version).ToList()
+    End Function
+
+    ''' <summary>从某个槽位目录里读出 dsh 的版本号；读不到返回 Nothing。</summary>
+    Private Function DshSlotReadVersionFrom(SlotDir As String) As String
+        Try
+            Dim pkg As String = Path.Combine(SlotDir, DshSlotPkgRel)
+            If Not File.Exists(pkg) Then Return Nothing
+            Dim obj As JObject = JObject.Parse(File.ReadAllText(pkg, Encoding.UTF8))
+            Return obj("version")?.ToString()
+        Catch ex As Exception
+            Logger.Warn(ex, $"DSH：读取槽位版本号失败：{SlotDir}")
+            Return Nothing
+        End Try
     End Function
 
     ''' <summary>读取清单里的导入槽位（不做可用性过滤）。</summary>
@@ -321,7 +457,7 @@ Public Module DshRuntimeSlot
             ModDSH.DshEnsureDirectories()
             Dim arr As New JArray()
             For Each s In Slots
-                If s.IsNpm Then Continue For
+                If s.IsLegacyNpm Then Continue For
                 Dim obj As New JObject()
                 obj("id") = s.Id
                 obj("version") = s.Version
@@ -379,6 +515,14 @@ Public Module DshRuntimeSlot
     ''' 这一点很重要：导入的目录被用户手动删掉后，程序不能因为
     ''' 「激活槽位找不到」而整个起不来 —— 回落到官方槽位至少还能跑。
     ''' </remarks>
+    ''' <summary>
+    ''' 当前激活的槽位 id；任何异常情况下返回一个**可用的**槽位。
+    ''' </summary>
+    ''' <remarks>
+    ''' ⚠️ 回退顺序：清单里记的 → 旧单例（若存在）→ 任意可用槽位 → 旧单例 id（兜底）。
+    ''' 不能无条件回退到 <c>npm</c> —— 新装的版本不再进那个目录，
+    ''' 新用户根本没有它，回退过去会得到一个"存在但不可用"的槽位。
+    ''' </remarks>
     Public Function DshSlotActiveId() As String
         Dim wanted As String = Nothing
         Try
@@ -388,20 +532,34 @@ Public Module DshRuntimeSlot
                 wanted = DshSlotTextOf(root, "active")
             End If
         Catch ex As Exception
-            Logger.Warn(ex, "DSH：读取激活槽位失败，按官方槽位处理")
+            Logger.Warn(ex, "DSH：读取激活槽位失败，按可用槽位处理")
         End Try
 
-        If String.IsNullOrWhiteSpace(wanted) Then Return DshSlotNpmId
-        If String.Equals(wanted, DshSlotNpmId, StringComparison.OrdinalIgnoreCase) Then Return DshSlotNpmId
+        Dim all As List(Of DshSlotInfo) = Nothing
+        Try
+            all = DshSlotList()
+        Catch ex As Exception
+            Logger.Warn(ex, "DSH：枚举槽位失败（用于校验激活项）")
+        End Try
 
-        ' 校验它是否真的还在
-        Dim found As DshSlotInfo = DshSlotReadManifest().FirstOrDefault(
-            Function(s) String.Equals(s.Id, wanted, StringComparison.OrdinalIgnoreCase) AndAlso s.IsUsable)
-        If found Is Nothing Then
-            Logger.Warn($"DSH：激活槽位 {wanted} 已不存在或不可用，回落到官方槽位")
-            Return DshSlotNpmId
+        ' ① 清单里记的还在，就用它
+        If Not String.IsNullOrWhiteSpace(wanted) AndAlso all IsNot Nothing Then
+            Dim found As DshSlotInfo = all.FirstOrDefault(
+                Function(s) String.Equals(s.Id, wanted, StringComparison.OrdinalIgnoreCase))
+            If found IsNot Nothing Then Return found.Id
+            Logger.Warn($"DSH：激活槽位 {wanted} 已不存在或不可用，正在挑选可用槽位")
         End If
-        Return found.Id
+
+        ' ② 回退：旧单例优先（保持老用户的既有行为），否则取第一个可用的
+        If all IsNot Nothing AndAlso all.Count > 0 Then
+            Dim legacy As DshSlotInfo = all.FirstOrDefault(Function(s) s.IsLegacyNpm)
+            If legacy IsNot Nothing Then Return legacy.Id
+            ' 版本化槽位已按版本降序排列 → 第一个就是最新的
+            Return all(0).Id
+        End If
+
+        ' ③ 一个可用槽位都没有：返回旧单例 id 让上层报出有意义的错误
+        Return DshSlotNpmId
     End Function
 
     ''' <summary>当前激活的槽位；任何异常情况下返回 npm 槽位（不会是 Nothing）。</summary>
@@ -446,7 +604,11 @@ Public Module DshRuntimeSlot
             ModDSH.DshEnsureDirectories()
             Dim arr As New JArray()
             For Each s In DshSlotList()
-                If s.IsNpm Then Continue For
+                ' ⚠️ 跳过两类：
+                '   · 旧单例（IsLegacyNpm）—— 目录固定，不需要记
+                '   · 版本化（IsVersioned）—— 由扫目录得出，写进去只会产生重复来源
+                '     （读的时候两者都有，还得靠去重兜底；干脆不写）
+                If s.IsLegacyNpm OrElse s.IsVersioned Then Continue For
                 Dim obj As New JObject()
                 obj("id") = s.Id
                 obj("version") = s.Version
@@ -543,6 +705,16 @@ Public Module DshRuntimeSlot
         If String.IsNullOrWhiteSpace(SourceDir) OrElse Not Directory.Exists(SourceDir) Then
             result.FailReason = "目录不存在。"
             Return result
+        End If
+
+        ' ⭐ 先判断是不是「导出环境」产出的包 —— 它的运行时在 runtime\ 子目录下，
+        '   直接按普通运行时包去找会失败（自己导出的包自己导不回来）。
+        Dim exportRuntime As String = Nothing
+        Dim exportHome As String = Nothing
+        Dim exportManifest As JObject = Nothing
+        If DshSlotDetectExportPackage(SourceDir, exportRuntime, exportHome, exportManifest) Then
+            Logger.Info($"DSH：识别为导出环境包，运行时位于 {exportRuntime}")
+            Return DshSlotPreviewRuntimeRoot(exportRuntime, "folder", SourceDir, exportManifest)
         End If
 
         Dim baseDir As String = DshSlotFindDshBase(SourceDir)
@@ -874,16 +1046,31 @@ Public Module DshRuntimeSlot
     ''' <c>package.json</c> 和磁盘不一致，应该走「卸载」而不是删目录。
     ''' 另外：**不允许删掉当前激活的那个**（先切走再删）。
     ''' </remarks>
+    ''' <summary>
+    ''' 删除一个运行时槽位。
+    ''' </summary>
+    ''' <returns>成功返回 Nothing；失败返回给用户看的原因。</returns>
+    ''' <remarks>
+    ''' 可删的两类：
+    ''' <list type="bullet">
+    ''' <item><b>导入槽位</b>（<c>imp_</c>）—— 目录在 <c>imported\</c> 下，需从清单移除</item>
+    ''' <item><b>版本化槽位</b>（<c>ver_</c>）—— 目录在 <c>versions\</c> 下，**不在清单里**
+    '''       （它是扫目录得出的），所以不能只从清单找，否则永远"找不到"</item>
+    ''' </list>
+    ''' ⚠️ 旧单例（<c>npm</c>）不给删 —— 它由 pnpm 管理，
+    ''' 直接删目录会让 <c>package.json</c> 与磁盘不一致。
+    ''' </remarks>
     Public Function DshSlotDelete(SlotId As String) As String
         If String.IsNullOrWhiteSpace(SlotId) Then Return "没有指定要删除的槽位。"
         If String.Equals(SlotId, DshSlotNpmId, StringComparison.OrdinalIgnoreCase) Then
-            Return "官方安装的槽位不能在这里删除 —— 它是 pnpm 管理的。"
+            Return "旧版安装的运行时不能在这里删除 —— 它是 pnpm 管理的。"
         End If
         If String.Equals(SlotId, DshSlotActiveId(), StringComparison.OrdinalIgnoreCase) Then
             Return "不能删除当前正在使用的运行时，请先切换到别的运行时。"
         End If
 
-        Dim target As DshSlotInfo = DshSlotReadManifest().FirstOrDefault(
+        ' 从**完整槽位列表**里找（而不是只查清单）—— 版本化槽位不在清单里
+        Dim target As DshSlotInfo = DshSlotList().FirstOrDefault(
             Function(s) String.Equals(s.Id, SlotId, StringComparison.OrdinalIgnoreCase))
         If target Is Nothing Then Return "找不到这个运行时槽位。"
 
@@ -891,10 +1078,16 @@ Public Module DshRuntimeSlot
             ' ⚠️ 变量名不能叫 dir —— Dir 是 VB 内置函数，会被当成关键字
             Dim slotDir As String = target.Dir
             If Directory.Exists(slotDir) Then DshSlotDeleteTreeSafe(slotDir)
-            Dim all As List(Of DshSlotInfo) = DshSlotReadManifest()
-            all.RemoveAll(Function(s) String.Equals(s.Id, SlotId, StringComparison.OrdinalIgnoreCase))
-            DshSlotWriteManifest(all)
-            Logger.Info($"DSH：已删除运行时槽位 {SlotId}")
+
+            ' 版本化槽位不在清单里，不需要（也不应该）去改清单 ——
+            ' 删掉目录后下次扫描自然就没了
+            If Not target.IsVersioned Then
+                Dim all As List(Of DshSlotInfo) = DshSlotReadManifest()
+                all.RemoveAll(Function(s) String.Equals(s.Id, SlotId, StringComparison.OrdinalIgnoreCase))
+                DshSlotWriteManifest(all)
+            End If
+
+            Logger.Info($"DSH：已删除运行时槽位 {SlotId}（{target.DisplayName}）")
             Return Nothing
         Catch ex As Exception
             Logger.Error(ex, $"DSH：删除运行时槽位 {SlotId} 失败")
@@ -1072,12 +1265,23 @@ Public Module DshRuntimeSlot
         Return If(prefix, "")
     End Function
 
-    ''' <summary>递归求目录体积（用于统计「跳过了多少」）。</summary>
+    ''' <summary>
+    ''' 统计目录里**真实文件**的总字节数（不跟随符号链接）。
+    ''' </summary>
+    ''' <param name="TargetDir">目标目录。</param>
     ''' <remarks>
     ''' ⚠️ 参数名不叫 <c>Dir</c> —— 那是 VB 内置函数，会撞车（同 <c>dir</c> 循环变量那个坑）。
-    ''' ⚠️ 也不用 <c>EnumerateFiles(..., AllDirectories)</c>：那个 API 遇到任何一层
-    ''' 没权限就整体抛异常（体积归零），而且会跟随符号链接导致虚高。
-    ''' 统一复用 <see cref="DshMigrate.MeasureDirectorySize"/>。
+    '''
+    ''' ⭐ 这个口径**就是"复制出去要多少字节"**，因为复制时链接只重建、不占空间。
+    ''' 实测数据（pnpm 的 node_modules）：
+    ''' <list type="bullet">
+    ''' <item>真实文件 37858 个 / <b>668 MB</b> ← 本函数算的就是这个</item>
+    ''' <item>目录链接 6721 个 / <b>0 字节</b>（复制时重建，不占空间）</item>
+    ''' </list>
+    '''
+    ''' ⚠️ 踩过的坑：曾用「跟随链接」的算法去统计，得到 3.8 GB —— 那是**错的**，
+    ''' 因为跟随会把同一批文件重复计数（链接指向的包本来就在同一棵树里）。
+    ''' 不要"跟随链接"，也不要 <c>os.walk(followlinks=True)</c> 这类做法。
     ''' </remarks>
     Private Function DshSlotMeasureTree(TargetDir As String) As Long
         Try
@@ -1087,7 +1291,6 @@ Public Module DshRuntimeSlot
             Return 0L
         End Try
     End Function
-
     ''' <summary>文件体积；读不到时返回 0。</summary>
     ''' <remarks>
     ''' ⚠️ 参数名刻意不叫 <c>File</c> —— 那会遮蔽 <c>System.IO.File</c>，
@@ -1187,7 +1390,162 @@ Public Module DshRuntimeSlot
     End Function
 
     ''' <summary>
-    ''' 找一个可用的 node.exe。
+    ''' 从「运行时所在目录」校验并产出预览结果。
+    ''' </summary>
+    ''' <param name="RuntimeRoot">运行时根目录（其下应当有 <c>node_modules\@deepseek-ai\dsh\</c>）。</param>
+    ''' <param name="SourceKind"><c>zip</c> 或 <c>folder</c>。</param>
+    ''' <param name="SourcePath">原始来源路径（给用户看的）。</param>
+    ''' <param name="Manifest">导出包清单（可选，用于补充提示信息）。</param>
+    ''' <remarks>
+    ''' 抽出来是为了让「导出环境包」和「纯运行时包」共用同一套校验 ——
+    ''' 两者的差别只在"运行时在哪一层"，校验规则完全一样。
+    ''' </remarks>
+    Private Function DshSlotPreviewRuntimeRoot(RuntimeRoot As String,
+                                               SourceKind As String,
+                                               SourcePath As String,
+                                               Optional Manifest As JObject = Nothing) As DshSlotPreview
+        Dim result As New DshSlotPreview With {
+            .SourceKind = SourceKind,
+            .SourcePath = SourcePath,
+            .NodeSatisfies = True
+        }
+
+        Dim baseDir As String = DshSlotFindDshBase(RuntimeRoot)
+        If String.IsNullOrWhiteSpace(baseDir) Then
+            result.FailReason = "没有找到 dsh 入口脚本（node_modules\@deepseek-ai\dsh\lib\bin.js）。" & vbCrLf &
+                                "请确认这个目录里装的是 DeepSeek Harness 运行时。"
+            Return result
+        End If
+
+        Dim pkgPath As String = Path.Combine(baseDir, DshSlotPkgRel)
+        If Not File.Exists(pkgPath) Then
+            result.FailReason = "找到了入口脚本，但缺少 package.json：" & vbCrLf & pkgPath
+            Return result
+        End If
+
+        Dim pkg As JObject = Nothing
+        Try
+            pkg = JObject.Parse(File.ReadAllText(pkgPath, Encoding.UTF8))
+        Catch ex As Exception
+            result.FailReason = "package.json 解析失败：" & ex.Message
+            Return result
+        End Try
+
+        Dim pkgName As String = If(pkg("name")?.ToString(), "").Trim()
+        If Not String.Equals(pkgName, DshSlotPackageName, StringComparison.OrdinalIgnoreCase) Then
+            result.FailReason = $"包名不匹配：期望 {DshSlotPackageName}，实际是「{pkgName}」。" & vbCrLf &
+                                "这可能是一个普通 Node 项目，不是 dsh 运行时。"
+            Return result
+        End If
+
+        Dim ver As String = If(pkg("version")?.ToString(), "").Trim()
+        If String.IsNullOrWhiteSpace(ver) Then
+            result.FailReason = "package.json 里没有 version 字段，无法确定版本。"
+            Return result
+        End If
+
+        result.Version = ver
+        ' ⚠️ 相对路径要基于**原始来源**算（而不是 RuntimeRoot）——
+        '    否则导入时会找不到文件（实际路径里多/少一层 runtime\）
+        result.DshBaseRelative = DshSlotRelativeOf(SourcePath, baseDir)
+        result.EntryRelative = If(result.DshBaseRelative = "", DshSlotEntryRel,
+                                  Path.Combine(result.DshBaseRelative, DshSlotEntryRel))
+
+        ' ── 找自带 Node（可选）──
+        Dim nodeExe As String = DshSlotFindNode(SourcePath, baseDir)
+        If Not String.IsNullOrWhiteSpace(nodeExe) Then
+            result.NodeRelative = DshSlotRelativeOf(SourcePath, nodeExe)
+            Dim nodeVer As String = DshRuntime.ReadNodeVersionVerbose(nodeExe)
+            result.NodeVersion = nodeVer
+            Dim ok As Boolean = DshRuntime.NodeVersionSatisfies(DshRuntime.ParseNodeVersion(nodeVer))
+            result.NodeSatisfies = ok
+            If Not ok Then
+                result.Warning = $"包自带的 Node 版本是 {If(String.IsNullOrWhiteSpace(nodeVer), "未知", nodeVer)}，" &
+                                 "不满足 dsh 的要求（需要 22.19 以上或 24.0 以上）。" & vbCrLf &
+                                 "仍然可以导入，但启动时可能会失败 —— 建议改用 PCL 的 Node。"
+            End If
+        Else
+            result.Warning = "这个包里没有找到 node.exe，导入后将使用 PCL 自己的 Node。"
+        End If
+
+        ' 导出包：额外告知它含哪些数据（用户会想知道"这个包里有什么"）
+        If Manifest IsNot Nothing Then
+            Try
+                Dim parts = TryCast(Manifest("parts"), JArray)
+                If parts IsNot Nothing AndAlso parts.Count > 0 Then
+                    Dim names As New List(Of String)
+                    For Each t In parts
+                        names.Add(t.ToString())
+                    Next
+                    result.Warning = $"这是一个「导出环境」包，包含：{String.Join("、", names)}。" & vbCrLf &
+                                     If(String.IsNullOrWhiteSpace(result.Warning), "", result.Warning)
+                End If
+            Catch ex As Exception
+                Logger.Warn(ex, "DSH：读取导出包清单的 parts 失败")
+            End Try
+        End If
+
+        result.Ok = True
+        Return result
+    End Function
+
+    ''' <summary>
+    ''' 判断一个来源是不是**「导出环境」产出的包**，并给出运行时的实际位置。
+    ''' </summary>
+    ''' <param name="RootDir">来源根目录（zip 已解压的目录，或文件夹）。</param>
+    ''' <param name="RuntimeDir">输出：运行时所在目录；不是导出包时为 Nothing。</param>
+    ''' <param name="HomeDir">输出：实例数据目录（<c>home\</c>）；没有则为 Nothing。</param>
+    ''' <param name="Manifest">输出：清单内容（解析成功时）；否则 Nothing。</param>
+    ''' <returns>是导出包返回 True。</returns>
+    ''' <remarks>
+    ''' ⭐ 为什么需要这个判断：
+    ''' 「导出环境」产出的包结构与「纯运行时包」**不同** —— 导出包是
+    ''' <code>
+    ''' &lt;根&gt;\
+    '''   pcl-dsh-manifest.json
+    '''   runtime\node_modules\@deepseek-ai\dsh\...   ← 运行时在这里
+    '''   home\...                                    ← 实例数据
+    ''' </code>
+    ''' 而纯运行时包的入口直接在根下（<c>node_modules\@deepseek-ai\dsh\...</c>）。
+    ''' 没有这个判断，导出包会被当成"不是运行时"而拒收 ——
+    ''' 也就是**自己导出的包自己导不回来**（实测踩过）。
+    '''
+    ''' 有清单文件 <c>pcl-dsh-manifest.json</c> 是导出包的**可靠标志**
+    ''' （纯运行时包不会有它）。
+    ''' </remarks>
+    Public Function DshSlotDetectExportPackage(RootDir As String,
+                                               ByRef RuntimeDir As String,
+                                               ByRef HomeDir As String,
+                                               ByRef Manifest As JObject) As Boolean
+        RuntimeDir = Nothing
+        HomeDir = Nothing
+        Manifest = Nothing
+        If String.IsNullOrWhiteSpace(RootDir) OrElse Not Directory.Exists(RootDir) Then Return False
+        Try
+            Dim manifestPath As String = Path.Combine(RootDir, DshEnvExport.DshManifestFileName)
+            If Not File.Exists(manifestPath) Then Return False
+
+            Try
+                Manifest = JObject.Parse(File.ReadAllText(manifestPath, Encoding.UTF8))
+            Catch ex As Exception
+                Logger.Warn(ex, $"DSH：导出包清单解析失败（{manifestPath}）")
+                ' 清单坏了也继续 —— 只要 runtime\ 存在就还能导
+            End Try
+
+            Dim rt As String = Path.Combine(RootDir, "runtime")
+            If Directory.Exists(rt) Then RuntimeDir = rt
+            Dim hm As String = Path.Combine(RootDir, "home")
+            If Directory.Exists(hm) Then HomeDir = hm
+
+            ' 至少有 runtime\ 才算"能导入的导出包"（只含 home\ 的包没有运行时）
+            Return RuntimeDir IsNot Nothing
+        Catch ex As Exception
+            Logger.Warn(ex, $"DSH：判断导出包失败：{RootDir}")
+            Return False
+        End Try
+    End Function
+
+    ''' <summary>找一个可用的 node.exe。
     ''' </summary>
     ''' <remarks>
     ''' 优先沿「dsh 基准目录 → 根目录」的祖先链往上找 <c>node\node.exe</c> ——
