@@ -795,6 +795,8 @@
     <Compile Include="Modules\DSH\DshSnapshot.vb" />
     <!-- AI 分析日志（问题 2）：官方优先、失败回退自定义网关 -->
     <Compile Include="Modules\DSH\DshLogAi.vb" />
+    <!-- 对话历史跨实例复制（合并 + 只补缺） -->
+    <Compile Include="Modules\DSH\DshSessionCopy.vb" />
     <!-- ── PCL_DSH：DSH 页面 ── -->
     <Compile Include="Pages\PageDSH\PageDSHLeft.xaml.vb">
       <DependentUpon>PageDSHLeft.xaml</DependentUpon>
