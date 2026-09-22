@@ -1,0 +1,56 @@
+<local:MyCard Title="先说结论：大概率是网络问题，不是程序坏了">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="插件是从 npm 仓库下载的。国内直连 npm 官方源（registry.npmjs.org）经常超时或者连接被重置 —— 这不是程序的问题，换个国内镜像源通常一次就好。" />
+        <local:MyHint Theme="Blue" Margin="0,12,0,0"
+                      Text="换源位置：下载 → 镜像版本 → 镜像源，选「npmmirror（淘宝）」或「腾讯云镜像」。" />
+    </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="怎么判断是不是网络问题" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="安装时进度条下面会显示当前在做什么。如果你看到这些字样，就是网络问题：" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,10,0,0"
+                   Text="· 「网络不稳，正在重试……」&#xA;· 「下载超时，正在重试……」&#xA;· 「下载速度较慢，请耐心等待……」" />
+        <local:MyHint Margin="0,12,0,0" IsWarn="True"
+                      Text="看到这些**不用关掉程序**。它在正常重试，关掉反而会留下装了一半的环境，下次更麻烦。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,12,0,0"
+                   Text="如果安装失败，弹窗里也会直接告诉你「看起来是网络问题」，并给出换源建议。" />
+    </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="换镜像源之后要做什么" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="换完源直接重新点一次安装就行，不需要清缓存或重启程序。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,8,0,0"
+                   Text="已经装了一半的插件会被重新安装一遍 —— 这是正常的，pnpm 会跳过已经下好的部分。" />
+        <local:MyHint Margin="0,12,0,0" Theme="Blue"
+                      Text="镜像源的选择是全局的，换一次之后装任何插件都会走它。" />
+    </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="装了很久还没完，怎么办" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="安装有 30 分钟的硬超时。如果你觉得它卡死了，可以这样判断：" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,10,0,0"
+                   Text="· 进度文案**还在变**（比如「已下载 12 个」变成「已下载 15 个」）→ 它在动，继续等&#xA;· 进度文案**十分钟没变过** → 可能真的卡住了，这时候关掉程序是安全的" />
+        <local:MyHint Margin="0,12,0,0" IsWarn="True"
+                      Text="关掉程序不会损坏已经装好的东西。下次启动时，环境体检会告诉你缺什么，点一键修复即可。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,12,0,0"
+                   Text="如果换了好几个镜像源都装不上，可以去「设置 → 启动 → 维护与修复」点【检查环境】，把结果连同日志一起反馈。" />
+    </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="装上了但界面里没出现" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="插件装好之后需要**重新加载浏览器页面**才会出现。刷新一下（Ctrl+R）就行。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,8,0,0"
+                   Text="如果刷新后还是没有，去「插件社区」看看那个插件是不是被列在「已安装」里。" />
+        <local:MyHint Margin="0,12,0,0"
+                      Text="有些插件需要额外配置才生效（比如要填 API Key）。可以点开插件详情看看它的说明。" />
+    </StackPanel>
+</local:MyCard>

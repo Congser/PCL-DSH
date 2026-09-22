@@ -1,0 +1,53 @@
+<local:MyCard Title="三步就能用起来">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,0,0,10"
+                   Text="这个启动器做的事情，是让你不用碰命令行就能把 dsh 跑起来。&#xA;dsh 的界面本身还是在浏览器里 —— 我们只负责把服务拉起来、把环境配好。" />
+        <local:MyHint Theme="Blue" Text="如果你已经装好并配过 API Key，直接看第 3 步就行。" />
+    </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="第 1 步：装配运行环境" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="进「设置 → 启动」，如果看到「第一次使用」的卡片，点【带我做一遍】。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,8,0,0"
+                   Text="它会自动把三样东西装好：Node.js、pnpm、dsh 本体。&#xA;第一次要下载几百个包，**可能十几分钟**，进度条会一直走。" />
+        <local:MyHint Margin="0,12,0,0" IsWarn="True"
+                      Text="这一步只需要做一次。中途不要关掉程序 —— 装一半停下会留下不完整的环境，下次还得重来。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,12,0,0"
+                   Text="如果你系统里已经装了 Node.js，它会直接复用，能省不少时间。" />
+    </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="第 2 步：填 API Key" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="进「设置 → 启动 → 模型接入方式」，填入你的 DeepSeek API Key。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,8,0,0"
+                   Text="保存后程序会**自动验一次**，几秒内就能知道这把 Key 能不能用 —— 不用等启动 dsh 之后才发现填错了。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,12,0,0"
+                   Text="如果你想用别的服务商（比如自建网关），在同一个页面里加一条自定义接入方式即可，每个接入方式的密钥是分开存的。" />
+    </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="第 3 步：启动" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="回到「启动」页，点【启动 DSH】。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,8,0,0"
+                   Text="等几秒，状态会变成「运行中」，浏览器会自动打开 dsh 的界面。&#xA;之后就跟你平时用 dsh 一样了。" />
+        <local:MyHint Margin="0,12,0,0" Theme="Blue"
+                      Text="浏览器界面里做的改动会直接写进实例的数据目录，不需要在启动器里再同步一次。" />
+    </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="如果 Windows 弹「已保护你的电脑」" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="点【更多信息】→【仍要运行】。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,8,0,0"
+                   Text="这是 SmartScreen 对**没有购买数字签名证书**的程序的标准提示，不是病毒警告。&#xA;本程序是开源项目，源码在 GitHub 上可以自己查看。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,12,0,0"
+                   Text="如果还是被拦截，可能是杀毒软件误报（因为程序会联网下载运行时）。可以把程序目录加进杀毒软件的排除项。" />
+    </StackPanel>
+</local:MyCard>

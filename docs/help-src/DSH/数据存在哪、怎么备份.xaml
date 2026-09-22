@@ -1,0 +1,73 @@
+<local:MyCard Title="你的数据在哪">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="所有东西（对话历史、API Key、插件、快照、配置）都在**数据目录**里。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,10,0,0"
+                   Text="默认位置是系统的临时目录下（%TEMP%\PCL\dsh），但**建议改到别的地方** —— 临时目录会被 Windows 清理。" />
+        <local:MyHint Margin="0,12,0,0" IsWarn="True"
+                      Text="查看当前位置：设置 → 启动 → 维护与修复，页面里会显示数据目录的完整路径。" />
+    </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="建议把数据挪出临时目录" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="Windows 会在磁盘紧张时清理临时目录，包括你的对话历史。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,10,0,0"
+                   Text="改位置的方法：设置 → 启动 → 维护与修复 → 【迁移数据目录】&#xA;选一个新位置（比如 D:\dsh-data），程序会把所有数据搬过去并自动切换。" />
+        <local:MyHint Margin="0,12,0,0" Theme="Blue"
+                      Text="迁移是安全的：搬完会校验文件数，而且会保留插件依赖的链接关系。&#xA;迁移完成后不用手动改任何设置。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,12,0,0"
+                   Text="想搬回默认位置也可以，同一个地方有对应的按钮。" />
+      </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="怎么备份" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22" FontWeight="Bold"
+                   Text="日常：用快照" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,6,0,0"
+                   Text="顶部菜单栏【快照】，拍一个快速快照就行 —— 几 MB、一两秒。&#xA;这是最轻量的备份方式，而且能直接恢复。" />
+
+        <TextBlock TextWrapping="Wrap" LineHeight="22" FontWeight="Bold" Margin="0,16,0,0"
+                   Text="换机器 / 长期归档：直接复制数据目录" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,6,0,0"
+                   Text="把整个数据目录复制一份到移动硬盘或网盘即可。&#xA;体积主要在插件依赖上（几百 MB），如果不需要离线恢复，可以只复制 instances 文件夹 —— 那里是真正的数据。" />
+
+        <local:MyHint Margin="0,12,0,0" IsWarn="True"
+                      Text="数据目录里的 .credentials.yaml 存着你的 API Key（明文）。备份到网盘前想清楚。" />
+      </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="升级启动器会不会丢数据" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="**不会**。数据目录和程序目录是分开的，覆盖升级只换程序文件，不碰数据。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,10,0,0"
+                   Text="升级步骤：&#xA;1. 关闭程序（正常关窗即可）&#xA;2. 解压新版本，覆盖旧文件&#xA;3. 启动" />
+        <local:MyHint Margin="0,12,0,0"
+                      Text="实例清单和快照的格式是向下兼容的，旧版本创建的数据新版本都能读。" />
+      </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="删掉程序会怎样" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="程序本身不写系统注册表、不改系统 PATH，删掉程序文件夹就干净了。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,8,0,0"
+                   Text="但**数据目录不会被删** —— 那是刻意的，避免误删你的对话。&#xA;要彻底清理，需要自己手动删数据目录。" />
+        <local:MyHint Margin="0,12,0,0" IsWarn="True"
+                      Text="删数据目录前先确认里面没有你要留的东西。删掉就找不回来了（除非你有备份或快照在别处）。" />
+      </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="换电脑怎么搬" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="1. 在新电脑上装好程序，完成运行环境装配&#xA;2. 把旧电脑的数据目录复制到新电脑&#xA;3. 在「维护与修复」里把数据目录指向复制过来的位置&#xA;4. 点【检查环境】→【一键修复】补上依赖" />
+        <local:MyHint Margin="0,12,0,0" IsWarn="True"
+                      Text="对话记录里存的是**工作区绝对路径**。新电脑上如果路径不一样（比如用户名不同），旧对话能打开但需要重新选工作区。这是 dsh 的存储格式决定的。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,12,0,0"
+                   Text="如果只想要对话、不想要插件，也可以用「对话历史」和「插件配置」这两个复制功能，按需搬。" />
+      </StackPanel>
+</local:MyCard>

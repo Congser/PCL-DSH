@@ -1,0 +1,70 @@
+<local:MyCard Title="快照是干什么的">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="给实例拍一个「还原点」。之后不管是装插件装坏了、改了配置忘了改了什么，都可以整体回到这一刻。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,10,0,0"
+                   Text="入口在顶部菜单栏的【快照】。" />
+        <local:MyHint Theme="Blue" Margin="0,12,0,0"
+                      Text="什么时候值得拍一个：装新插件之前、改配置之前、想试试某个不确定的东西之前。" />
+    </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="快速快照 vs 完整快照" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22" FontWeight="Bold"
+                   Text="快速快照（推荐日常用）" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,6,0,0"
+                   Text="只记配置和使用数据（插件清单、密钥、对话、审批规则、外观），**不包含插件本体**。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,6,0,0"
+                   Text="· 体积小，通常几 MB&#xA;· 创建只要一两秒&#xA;· 恢复时会**按清单自动重装插件**，所以恢复过程需要联网" />
+
+        <TextBlock TextWrapping="Wrap" LineHeight="22" FontWeight="Bold" Margin="0,16,0,0"
+                   Text="完整快照" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,6,0,0"
+                   Text="连插件本体一起存下来。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,6,0,0"
+                   Text="· 体积几百 MB，创建要几十秒到几分钟&#xA;· 好处是**完全离线也能恢复**" />
+
+        <local:MyHint Margin="0,12,0,0"
+                      Text="只是留个还原点的话，快速快照就够了。只有当你要在没网的环境下恢复，才需要完整快照。" />
+    </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="恢复的时候会发生什么" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="恢复是**按条目覆盖**的，不是把整个实例目录清空重建。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,10,0,0"
+                   Text="具体行为：" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,6,0,0"
+                   Text="· 快照里**有**的东西 → 覆盖回实例（同名数据会被替换）&#xA;· 快照里**没有**的东西 → 保持不动" />
+        <local:MyHint Margin="0,12,0,0" Theme="Blue"
+                      Text="所以用快速快照恢复之后，插件本体仍然在原来的位置（因为它本来就不在快照里），不会被误删。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,12,0,0"
+                   Text="另外，**恢复前程序会自动给当前状态也拍一个快照**（名字叫「恢复前自动备份」）。&#xA;万一你点错了，可以用它退回来。" />
+        <local:MyHint Margin="0,12,0,0" IsWarn="True"
+                      Text="恢复会先停止实例 —— 运行中的实例不能恢复，这是为了避免数据写坏。" />
+    </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="快照存在哪、占多少空间" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="存在数据目录下的 snapshots 文件夹里，按实例分开。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,8,0,0"
+                   Text="快照页面顶部会显示所有快照占用的总空间。&#xA;快照不会自动清理 —— 用不到的直接点【删除】就行。" />
+        <local:MyHint Margin="0,12,0,0"
+                      Text="如果你打算长期保留多个快照，注意快速快照虽小，但数量多了也会累积。" />
+    </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="恢复之后发现不对，还能退回去吗" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="能。恢复前的自动备份就是为这个准备的 —— 在快照列表里找到它，恢复回去即可。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,8,0,0"
+                   Text="所以「恢复」这个操作实际上是可以来回横跳的，不用怕。" />
+        <local:MyHint Margin="0,12,0,0" IsWarn="True"
+                      Text="但如果你手动删掉了那个自动备份，就真的退不回去了。删快照前想清楚。" />
+    </StackPanel>
+</local:MyCard>

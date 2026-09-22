@@ -1,0 +1,80 @@
+<local:MyCard Title="按这个顺序排查，多数问题能自己解决">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="1. 看日志 —— 顶部菜单栏【日志】，大部分错误信息都在里面&#xA;2. 让 AI 分析 —— 同一个页面点【AI 分析日志】&#xA;3. 检查环境 —— 设置 → 启动 → 维护与修复 → 【检查环境】&#xA;4. 一键修复 —— 多数问题点这个就能解决&#xA;5. 快照回滚 —— 实在不行，回到之前正常的状态" />
+        <local:MyHint Theme="Blue" Margin="0,12,0,0"
+                      Text="反馈问题时，把日志页的内容一起发出来最快 —— 里面有程序版本、系统信息、完整的运行记录。" />
+    </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="第 1 步：看日志" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="日志页显示的是**当前实例**的完整运行输出，包括 dsh 自己的输出和启动器做的事。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,8,0,0"
+                   Text="错误行会标成红色。如果你看不太懂，直接复制整页内容发出来即可，不用自己筛选。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,8,0,0"
+                   Text="页面底部还有日志文件的位置，需要更早的记录时可以去那里翻。" />
+    </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="第 2 步：让 AI 帮你分析" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="日志页点【AI 分析日志】，程序会把日志交给 DeepSeek 分析，直接告诉你哪里出了问题、该怎么处理。" />
+        <local:MyHint Margin="0,12,0,0" Theme="Blue"
+                      Text="日志在发送前会**自动脱敏** —— API Key、token、带用户名的路径都会被打码，不会泄露出去。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,12,0,0"
+                   Text="它给出的是**建议**，不会自动替你改任何东西。需要执行什么由你自己点。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,8,0,0"
+                   Text="如果官方 API 不可用，它会自动尝试你配置的其他接入方式。" />
+      </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="第 3、4 步：检查环境 + 一键修复" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="位置：设置 → 启动 → 维护与修复。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,10,0,0"
+                   Text="【检查环境】会逐项检查：&#xA;· Node.js / pnpm / dsh 是否就绪&#xA;· 运行时的依赖是否完整&#xA;· 实例数据是否正常" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,10,0,0"
+                   Text="有问题的项会标出来，【一键修复】会按检查结果自动处理 —— 补依赖、重建运行时、修配置文件等。" />
+        <local:MyHint Margin="0,12,0,0" IsWarn="True"
+                      Text="修复会先停止实例。如果实例正在运行，程序会提示你先停下来。" />
+      </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="第 5 步：用快照回滚" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="如果前面几步都没解决，而且你之前拍过快照，可以直接回到那个正常状态。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,8,0,0"
+                   Text="入口在顶部菜单栏【快照】。恢复前程序会自动备份当前状态，点错了能退回来。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,8,0,0"
+                   Text="详见「快照：给环境留个还原点」那篇。" />
+      </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="几个常见现象" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22" FontWeight="Bold"
+                   Text="启动后浏览器没自动打开" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,6,0,0"
+                   Text="日志页会显示服务地址（形如 http://127.0.0.1:端口/?token=...）。手动复制到浏览器打开即可。" />
+
+        <TextBlock TextWrapping="Wrap" LineHeight="22" FontWeight="Bold" Margin="0,16,0,0"
+                   Text="提示端口被占用" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,6,0,0"
+                   Text="可能是上一次的 dsh 进程还在跑。用任务管理器结束残留的 node.exe，或者重启程序 —— 它会自动回收孤儿进程。" />
+
+        <TextBlock TextWrapping="Wrap" LineHeight="22" FontWeight="Bold" Margin="0,16,0,0"
+                   Text="插件加载失败 / 界面报错" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,6,0,0"
+                   Text="可能是某个插件和当前 dsh 版本不兼容。可以进插件社区把最近装的那个卸载掉试试。" />
+
+        <TextBlock TextWrapping="Wrap" LineHeight="22" FontWeight="Bold" Margin="0,16,0,0"
+                   Text="对话里报「密钥无效」" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,6,0,0"
+                   Text="去设置 → 启动 → 模型接入方式，重新保存一次 Key —— 保存时会自动验证。" />
+      </StackPanel>
+</local:MyCard>

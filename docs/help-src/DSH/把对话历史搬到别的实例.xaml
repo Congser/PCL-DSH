@@ -1,0 +1,68 @@
+<local:MyCard Title="为什么需要搬">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="每个实例的对话历史是**互相独立**的 —— 这正是多实例的设计目的（换 API Key、换插件组合时互不干扰）。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,10,0,0"
+                   Text="但用久了常常会希望把散在各个实例里的对话集中到一处，这时候就用【复制对话历史】。" />
+        <local:MyHint Theme="Blue" Margin="0,12,0,0"
+                      Text="位置：设置 → 启动 → 维护与修复 → 对话历史" />
+    </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="它是怎么工作的：只补缺" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="选一个实例当**来源**，勾选要复制到的**目标实例**，点【复制对话历史】。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,12,0,0"
+                   Text="复制是**只补缺**的：只把来源有、目标没有的会话搬过去。" />
+        <local:MyHint Margin="0,12,0,0" Theme="Blue"
+                      Text="例：实例1 有 {1,2,3,4}，实例2 有 {4,5,6,7}&#xA;用实例1 复制到实例2 → 结果是 {1,2,3,4,5,6,7}&#xA;实例2 原有的 4/5/6/7 **原样保留**，不是被覆盖成 {1,2,3,4}。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,12,0,0"
+                   Text="为什么不做成「较新的覆盖较旧的」：聊天记录是累积型数据，丢一条就是永久的。&#xA;只补缺 = 完全不修改目标已有的东西，天然安全。" />
+    </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="什么会被复制，什么不会" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22" FontWeight="Bold"
+                   Text="会复制" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,6,0,0"
+                   Text="· 对话正文（这是主要目的）&#xA;· 会话索引（没有它，会话不会出现在列表里）" />
+
+        <TextBlock TextWrapping="Wrap" LineHeight="22" FontWeight="Bold" Margin="0,16,0,0"
+                   Text="不会复制" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,6,0,0"
+                   Text="· API Key —— 目标实例的密钥保持不变&#xA;· 插件 —— 用「插件配置」那个区块搬" />
+        <local:MyHint Margin="0,12,0,0"
+                      Text="刻意分成两个功能：搬插件要联网跑安装（慢），搬对话是纯文件复制（快、可离线）。混在一起你就没法只做想要的那件事。" />
+    </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="为什么会有重复的会话" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="同一个会话同时出现在两个实例里，只可能是**之前复制过**。&#xA;这种情况程序会跳过它 —— 目标已有的那份原样保留，不会被来源的覆盖。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,10,0,0"
+                   Text="如果你在两个实例里都继续聊过同一个会话，那么只能保留目标那份。&#xA;这是「只补缺」策略的代价，但换来的是「绝对不会丢东西」。" />
+    </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="复制完发现对话打不开" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="对话记录里存的是**工作区绝对路径**（比如 D:\项目）。如果你是在**另一台机器**上恢复的，那个路径可能不存在 —— 会话能打开，但需要重新选一下工作区。" />
+        <local:MyHint Margin="0,12,0,0" IsWarn="True"
+                      Text="这是 dsh 的存储格式决定的，不是复制功能的问题。同一台机器上的不同实例之间复制不受影响。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,12,0,0"
+                   Text="如果对话**完全打不开**（不是路径问题），那多半是索引和正文没配对上。&#xA;这种情况请把日志发出来反馈。" />
+    </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="复制前要停实例吗" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="**目标实例**必须停止 —— 程序会检查，如果目标正在运行会拒绝执行。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,8,0,0"
+                   Text="来源实例可以正常运行，复制读的是磁盘上的文件，不受影响。" />
+      </StackPanel>
+</local:MyCard>

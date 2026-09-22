@@ -1,0 +1,57 @@
+<local:MyCard Title="一句话：每个实例是一套完全独立的 dsh 环境">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="很多人会以为多个实例共享同一份数据 —— **不是的**。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,10,0,0"
+                   Text="每个实例有自己的数据目录，下面这些东西各实例**完全独立、互不影响**：" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,10,0,0"
+                   Text="· 对话历史 —— 在实例 A 聊的天，实例 B 里看不到&#xA;· API Key —— 可以给不同实例配不同的 Key 或网关&#xA;· 插件 —— 可以给实例 A 装一堆插件，实例 B 保持干净&#xA;· 配置 —— 审批白名单、外观偏好等都是各自的" />
+        <local:MyHint Theme="Blue" Margin="0,12,0,0"
+                      Text="共用的只有 dsh 运行时（Node + dsh 本体）。所以开多个实例**不会**重复占用几个 G 的磁盘。" />
+    </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="为什么要这么设计" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="好处是你可以拿一个实例当「试验田」乱装插件，另一个保持稳定；&#xA;也可以一个实例接官方 API、另一个接便宜的自定义网关。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,12,0,0"
+                   Text="代价是：在实例 A 里装好的插件、配好的 Key、聊过的天，**不会自动出现在实例 B**，需要手动搬。" />
+        <local:MyHint Margin="0,12,0,0" IsWarn="True"
+                      Text="如果你希望所有对话都在一处，最简单的办法是**只用一个实例**。&#xA;多实例适合「要隔离」的场景，不适合「要共享」的场景。" />
+    </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="怎么在实例之间搬东西" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22" FontWeight="Bold"
+                   Text="搬对话历史" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,6,0,0"
+                   Text="设置 → 启动 → 维护与修复 → 对话历史&#xA;选一个实例当来源，勾选要复制到的目标实例，点【复制对话历史】。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,8,0,0"
+                   Text="它是**只补缺**的：只把来源有、目标没有的会话搬过去，目标已有的会话**一个都不会被改动**。" />
+        <local:MyHint Margin="0,10,0,0" Theme="Blue"
+                      Text="例：实例1 有 {1,2,3,4}，实例2 有 {4,5,6,7} → 复制后是 {1,2,3,4,5,6,7}，实例2 原有的 4/5/6/7 原样保留。" />
+
+        <TextBlock TextWrapping="Wrap" LineHeight="22" FontWeight="Bold" Margin="0,18,0,0"
+                   Text="搬插件和密钥" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,6,0,0"
+                   Text="同一个页面的「插件配置」区块。&#xA;可以把实例 A 调好的插件组合搬到实例 B，也可以选择要不要连 API Key 一起带过去。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,8,0,0"
+                   Text="插件是**重新安装**而不是复制文件 —— 这样依赖关系才一致，以后你再装别的插件不会把同步过来的清掉。" />
+
+        <TextBlock TextWrapping="Wrap" LineHeight="22" FontWeight="Bold" Margin="0,18,0,0"
+                   Text="只想找某个对话在哪个实例" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,6,0,0"
+                   Text="每个实例的数据目录下都有 sessions 文件夹，那里就是它的全部对话。&#xA;数据目录位置可以在「设置 → 启动 → 维护与修复」里看到。" />
+    </StackPanel>
+</local:MyCard>
+
+<local:MyCard Title="新建实例要重新装配环境吗" Margin="0,15,0,0">
+    <StackPanel Margin="25,40,23,15">
+        <TextBlock TextWrapping="Wrap" LineHeight="22"
+                   Text="不需要。运行时是共用的，新建实例是**瞬间完成**的 —— 它只是建了几个空目录。" />
+        <TextBlock TextWrapping="Wrap" LineHeight="22" Margin="0,8,0,0"
+                   Text="新实例是干净的：没有插件、没有对话、没有密钥。按需往上装就行。" />
+    </StackPanel>
+</local:MyCard>
