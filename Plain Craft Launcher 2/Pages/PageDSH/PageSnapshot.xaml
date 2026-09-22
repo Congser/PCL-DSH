@@ -1,0 +1,84 @@
+<local:MyPageRight
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:PCL"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d" x:Class="PageSnapshot"
+    PanScroll="PanBack">
+    <!--
+        PCL_DSH：实例快照页。
+
+        给实例的数据拍快照 / 恢复 / 删除。数据散在十几个目录里
+        （插件、密钥、会话、审批规则、皮肤……），出问题时没有退路，
+        这一页就是那条退路。
+
+        ⚠️ 整页必须包在 <local:MyScrollViewer x:Name="PanBack"> 里。
+        根元素上的 PanScroll="PanBack" 只是**指向**这个名字的滚动容器 ——
+        页里没有这个控件时它就是个空操作：页面既滚不动，
+        FormMain 的「回到顶部」按钮也找不到目标。
+    -->
+    <Grid>
+        <local:MyScrollViewer x:Name="PanBack" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="25,25,25,25">
+
+                <!-- 当前实例 + 创建 -->
+                <local:MyCard Title="创建快照" Margin="0,0,0,15">
+                    <StackPanel Margin="20,36,18,18">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="240" />
+                                <ColumnDefinition Width="1*" />
+                            </Grid.ColumnDefinitions>
+                            <local:MyComboBox x:Name="ComboInstance" Grid.Column="0" />
+                            <TextBlock x:Name="LabInstanceNote" Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center"
+                                       FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource ColorBrushGray3}" />
+                        </Grid>
+
+                        <TextBlock Margin="0,16,0,0" FontSize="12.5" TextWrapping="Wrap" LineHeight="20"
+                                   Foreground="{DynamicResource ColorBrushGray4}"
+                                   Text="快照会把实例的插件配置、API Key、会话记录、审批规则等一并记下来，出问题时可以整体回到这一刻。" />
+                        <TextBlock Margin="0,6,0,0" FontSize="12.5" TextWrapping="Wrap" LineHeight="20"
+                                   Foreground="{DynamicResource ColorBrushGray4}"
+                                   Text="快速快照不包含插件依赖（几百 MB），恢复时按清单自动重装，通常只有几 MB；完整快照连依赖一起存，可离线恢复。" />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                            <local:MyButton x:Name="BtnSnapQuick" Text="创建快速快照" ColorType="Highlight" Margin="0,0,10,0"
+                                            ToolTip="只存配置与使用数据（不含插件依赖），体积小、速度快。恢复时按清单重装依赖。" />
+                            <local:MyButton x:Name="BtnSnapFull" Text="创建完整快照" Margin="0,0,10,0"
+                                            ToolTip="连插件依赖一起存。体积几百 MB、耗时长，但完全离线可恢复。" />
+                            <local:MyButton x:Name="BtnSnapRefresh" Text="刷新列表" />
+                        </StackPanel>
+
+                        <TextBlock x:Name="LabSnapUsage" Margin="0,12,0,0" FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource ColorBrushGray3}" />
+                    </StackPanel>
+                </local:MyCard>
+
+                <!-- 快照列表 -->
+                <local:MyCard Title="已有快照">
+                    <StackPanel Margin="20,36,18,18">
+                        <StackPanel x:Name="PanSnapshots" />
+                        <TextBlock x:Name="LabSnapEmpty" Margin="0,10,0,10"
+                                   FontSize="13" TextWrapping="Wrap" TextAlignment="Center"
+                                   Foreground="{DynamicResource ColorBrushGray3}"
+                                   Text="还没有快照。&#x0a;点上方「创建快速快照」给当前状态留一个还原点。" />
+                    </StackPanel>
+                </local:MyCard>
+
+            </StackPanel>
+        </local:MyScrollViewer>
+
+        <!-- 加载中：放在 ScrollViewer 外面，这样它是在视口里居中 -->
+        <local:MyCard x:Name="PanLoad" Visibility="Collapsed"
+                      HorizontalAlignment="Center" VerticalAlignment="Center" Margin="40,0"
+                      SnapsToDevicePixels="True" UseAnimation="False">
+            <StackPanel Margin="20,20,20,17">
+                <local:MyLoading x:Name="LoadStart" Text="正在处理" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <TextBlock x:Name="LabLoadHint" Margin="0,12,0,0" FontSize="12.5" MaxWidth="440" TextAlignment="Center" TextWrapping="Wrap"
+                           HorizontalAlignment="Center" Foreground="{DynamicResource ColorBrushGray4}"
+                           Text="正在处理快照……" />
+            </StackPanel>
+        </local:MyCard>
+    </Grid>
+</local:MyPageRight>

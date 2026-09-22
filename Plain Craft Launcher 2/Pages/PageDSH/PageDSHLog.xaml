@@ -1,0 +1,148 @@
+<local:MyPageRight
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:PCL"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d" x:Class="PageDSHLog"
+    PanScroll="PanBack">
+    <!--
+        PCL_DSH：运行日志页。
+
+        这一页是「服务侧」的落脚点：
+          我的实例 / 服务状态 / 界面打开方式 / 服务输出 / 密钥是怎么生效的
+
+        ⚠️ 整页必须包在 <local:MyScrollViewer x:Name="PanBack"> 里。
+        根元素上的 PanScroll="PanBack" 只是**指向**这个名字的滚动容器 ——
+        如果页里没有这个控件，它就是个空操作，页面滚不动（早期版本就是这样）。
+    -->
+    <Grid>
+        <local:MyScrollViewer x:Name="PanBack" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="25,25,25,25">
+
+                <!-- 我的实例总览 -->
+                <local:MyCard Title="我的实例" Margin="0,0,0,15">
+                    <StackPanel Margin="20,36,18,18">
+                        <TextBlock FontSize="13" TextWrapping="Wrap" LineHeight="21"
+                                   Foreground="{DynamicResource ColorBrushGray2}"
+                                   Text="每个实例拥有独立的数据目录（配置、插件、会话、凭据），但共享同一份 Node 与 dsh 运行时。实例数量上限为 4 个。" />
+                        <StackPanel x:Name="PanInstanceOverview" Margin="0,14,0,0" />
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <local:MyButton x:Name="BtnOpenInstances" Text="管理实例" ColorType="Highlight" Margin="0,0,10,0" />
+                            <local:MyButton x:Name="BtnStopAll" Text="停止全部" Margin="0,0,10,0" />
+                            <local:MyButton x:Name="BtnRefreshInstances" Text="刷新" />
+                        </StackPanel>
+                    </StackPanel>
+                </local:MyCard>
+
+                <!-- 服务状态 -->
+                <local:MyCard Title="服务状态" Margin="0,0,0,15">
+                    <StackPanel Margin="20,36,18,18">
+                        <TextBlock x:Name="LabStateTitle" FontSize="17" FontWeight="Bold" Text="DSH 未运行" TextWrapping="Wrap" />
+                        <TextBlock x:Name="LabStateDetail" Margin="0,10,0,0" FontSize="13" TextWrapping="Wrap" LineHeight="21"
+                                   Foreground="{DynamicResource ColorBrushGray2}"
+                                   Text="点击左侧的「启动 DSH」按钮即可启动服务，启动完成后会自动为你打开浏览器。" />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
+                            <local:MyButton x:Name="BtnOpenUi" Text="打开 DSH 界面" ColorType="Highlight" Margin="0,0,10,0" />
+                            <local:MyButton x:Name="BtnStartStop" Text="启动 DSH" Margin="0,0,10,0" />
+                            <local:MyButton x:Name="BtnRefresh" Text="刷新状态" />
+                        </StackPanel>
+
+                        <TextBlock x:Name="LabAddress" Margin="0,14,0,0" FontSize="12" TextWrapping="Wrap"
+                                   FontFamily="Consolas, Microsoft YaHei UI" Foreground="{DynamicResource ColorBrushGray4}" />
+                    </StackPanel>
+                </local:MyCard>
+
+                <!-- 界面承载方式 -->
+                <local:MyCard Title="界面打开方式" Margin="0,0,0,15">
+                    <StackPanel Margin="20,36,18,18">
+                        <TextBlock x:Name="LabBrowser" FontSize="13" TextWrapping="Wrap" LineHeight="21" />
+                        <TextBlock FontSize="12.5" Margin="0,10,0,0" TextWrapping="Wrap" LineHeight="20"
+                                   Foreground="{DynamicResource ColorBrushGray4}"
+                                   Text="PCL DSH 不内嵌浏览器内核，而是把界面交给系统浏览器承载 —— 这样可以使用你自己熟悉的书签、扩展与密码管理器，也不会在后台残留额外的浏览器进程。&#x0a;打开方式可以在「设置 → 启动」中修改。" />
+                    </StackPanel>
+                </local:MyCard>
+
+                <!-- 服务输出 -->
+                <local:MyCard Title="服务输出" Margin="0,0,0,15">
+                    <StackPanel Margin="20,36,18,18">
+                        <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="20" Margin="0,0,0,10"
+                                   Foreground="{DynamicResource ColorBrushGray4}"
+                                   Text="这里显示 DSH 服务进程的标准输出与错误输出。首次装配运行时可能需要十几分钟，进度会实时写入下方。" />
+                        <local:MyScrollViewer VerticalScrollBarVisibility="Auto" Height="300" HorizontalScrollBarVisibility="Disabled">
+                            <TextBlock x:Name="LabOutput" FontSize="12.5" TextWrapping="Wrap" LineHeight="19"
+                                       FontFamily="Consolas, Microsoft YaHei UI" Foreground="{DynamicResource ColorBrushGray2}" />
+                        </local:MyScrollViewer>
+                        <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                            <local:MyButton x:Name="BtnRefreshOutput" Text="刷新输出" Margin="0,0,10,0" />
+                            <local:MyButton x:Name="BtnAnalyzeLog" Text="AI 分析日志" ColorType="Highlight" Margin="0,0,10,0"
+                                            ToolTip="把日志（已脱敏）交给 DeepSeek 分析，给出问题原因与处理建议。优先用官方 API，失败自动回退到你配置的自定义网关。" />
+                            <local:MyButton x:Name="BtnOpenFolder" Text="打开数据目录" />
+                        </StackPanel>
+                        <TextBlock x:Name="LabLogPath" FontSize="12" Margin="0,10,0,0" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource ColorBrushGray4}" />
+                    </StackPanel>
+                </local:MyCard>
+
+                <!-- AI 分析结果（默认隐藏，点「AI 分析日志」后出现） -->
+                <local:MyCard x:Name="CardAiResult" Title="AI 分析结果" Margin="0,0,0,15" Visibility="Collapsed">
+                    <StackPanel Margin="20,36,18,18">
+                        <TextBlock x:Name="LabAiMeta" FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource ColorBrushGray3}" />
+                        <TextBlock x:Name="LabAiSummary" Margin="0,12,0,0" FontSize="15" FontWeight="Bold"
+                                   TextWrapping="Wrap" LineHeight="24"
+                                   Foreground="{DynamicResource ColorBrush1}" />
+                        <TextBlock x:Name="LabAiAnalysis" Margin="0,12,0,0" FontSize="12.5"
+                                   TextWrapping="Wrap" LineHeight="21"
+                                   Foreground="{DynamicResource ColorBrushGray2}" />
+                        <TextBlock x:Name="LabAiSuggestTitle" Margin="0,16,0,0" FontSize="13" FontWeight="Bold"
+                                   Foreground="{DynamicResource ColorBrush1}" Text="建议的处理步骤" />
+                        <StackPanel x:Name="PanAiSuggestions" Margin="0,8,0,0" />
+                        <TextBlock x:Name="LabAiFootNote" Margin="0,14,0,0" FontSize="12" TextWrapping="Wrap" LineHeight="19"
+                                   Foreground="{DynamicResource ColorBrushGray4}"
+                                   Text="以上是模型给出的判断，仅供参考。需要执行时请自己确认 —— PCL 不会自动替你改任何东西。" />
+                    </StackPanel>
+                </local:MyCard>
+
+                <!-- 密钥与配置是怎么生效的（从启动页右栏搬过来的） -->
+                <local:MyCard Title="密钥与配置是怎么生效的" Margin="0,0,0,15">
+                    <StackPanel Margin="20,36,18,18">
+                        <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="20"
+                                   Foreground="{DynamicResource ColorBrushGray2}"
+                                   Text="PCL DSH 不额外维护一份配置副本，而是直接写 dsh 自己的文件。这样做的好处是：PCL 里配的、浏览器里看到的、命令行 dsh 用的，永远是同一份数据。" />
+
+                        <TextBlock FontSize="13" FontWeight="Bold" Margin="0,16,0,0" Text="密钥" />
+                        <TextBlock FontSize="12.5" Margin="0,6,0,0" TextWrapping="Wrap" LineHeight="20"
+                                   Foreground="{DynamicResource ColorBrushGray4}"
+                                   Text="存放位置：每个实例数据目录下的 .credentials.yaml 的 refs 段。" />
+                        <TextBlock FontSize="12.5" Margin="0,6,0,0" TextWrapping="Wrap" LineHeight="20"
+                                   Foreground="{DynamicResource ColorBrushGray4}"
+                                   Text="读取优先级（高 → 低）：启动时的环境变量 &gt; 凭据文件 refs 段 &gt; 工作目录下的 .env &gt; 数据目录下的 .env。写入 refs 段可以压过两个 .env 文件，并且立刻生效，不需要重启服务。" />
+                        <TextBlock FontSize="12.5" Margin="0,6,0,0" TextWrapping="Wrap" LineHeight="20"
+                                   Foreground="{DynamicResource ColorBrushGray4}"
+                                   Text="写入方式：只改动 refs 段里的那一行，文件里的注释、会话记录（records 段）与其它内容都原样保留。" />
+                        <TextBlock FontSize="12.5" Margin="0,6,0,0" TextWrapping="Wrap" LineHeight="20"
+                                   Foreground="{DynamicResource ColorBrushGray4}"
+                                   Text="官方与自定义网关用两个不同的凭据名，所以在两者之间来回切换不需要重新粘贴密钥。" />
+
+                        <TextBlock FontSize="13" FontWeight="Bold" Margin="0,16,0,0" Text="接入地址与协议" />
+                        <TextBlock FontSize="12.5" Margin="0,6,0,0" TextWrapping="Wrap" LineHeight="20"
+                                   Foreground="{DynamicResource ColorBrushGray4}"
+                                   Text="存放位置：每个实例数据目录下的 settings.yaml 的 llm-deepseek 分节。这也是官方浏览器界面「模型」页写的地方，改动会热重载，不需要重启服务。" />
+                        <TextBlock FontSize="12.5" Margin="0,6,0,0" TextWrapping="Wrap" LineHeight="20"
+                                   Foreground="{DynamicResource ColorBrushGray4}"
+                                   Text="使用官方 API 时不会写这个分节 —— 删掉它即可回到官方默认值。" />
+
+                        <TextBlock x:Name="LabKeyPath" Margin="0,14,0,0" FontSize="12" TextWrapping="Wrap"
+                                   FontFamily="Consolas, Microsoft YaHei UI" Foreground="{DynamicResource ColorBrushGray4}" />
+
+                        <local:MyHint Margin="0,12,0,0" Theme="Yellow"
+                                      Text="凭据文件以明文保存密钥。请勿把该目录（PCL 的缓存目录）分享或上传到公开位置。" />
+                    </StackPanel>
+                </local:MyCard>
+
+            </StackPanel>
+        </local:MyScrollViewer>
+    </Grid>
+</local:MyPageRight>

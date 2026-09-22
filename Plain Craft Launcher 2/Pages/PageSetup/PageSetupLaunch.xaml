@@ -1,0 +1,248 @@
+<local:MyPageRight
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:PCL" xmlns:d="http://schemas.microsoft.com/expression/blend/2008" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+    xmlns:System="clr-namespace:System;assembly=mscorlib" 
+    mc:Ignorable="d" x:Class="PageSetupLaunch"
+    PanScroll="PanBack">
+    <local:MyScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" x:Name="PanBack">
+        <StackPanel x:Name="PanMain" Margin="25,25,25,10">
+            <local:MyCard x:Name="CardDsh" Margin="0,0,0,15" Title="DSH 运行时" CanSwap="True" IsSwapped="False">
+                <Grid Margin="25,40,25,15">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="1*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="9" />
+                        <RowDefinition Height="28" />
+                        <RowDefinition Height="9" />
+                        <RowDefinition Height="28" />
+                        <RowDefinition Height="9" />
+                        <RowDefinition Height="28" />
+                        <RowDefinition Height="9" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="9" />
+                        <RowDefinition Height="28" />
+                        <RowDefinition Height="9" />
+                        <RowDefinition Height="28" />
+                        <RowDefinition Height="9" />
+                        <RowDefinition Height="28" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <local:MyHint Grid.Row="0" Grid.ColumnSpan="2" Margin="0,0,0,6" Theme="Blue"
+                                  Text="PCL DSH 会优先复用你电脑上已有的 Node 与 pnpm；不合格时会自动装配到私有目录，不会修改系统环境变量。" />
+
+                    <!-- Node 检测 -->
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,0,25,0" VerticalAlignment="Center">
+                        <TextBlock Text="Node.js 路径" VerticalAlignment="Center" />
+                        <local:MyIconButton Height="23" Margin="5,1,0,0" x:Name="BtnDshNodeDetect" VerticalAlignment="Center" ToolTip="重新自动检测"
+                                            LogoScale="0.9" Theme="Black"
+                                            Logo="M512.0 838.3c-80.2 0-153.4-29.3-210.2-77.4l75.5-75.5c11.5-11.5 25.8-22.0 25.8-37.0a27.2 27.2 0 0 0-27.1-27.1H104.0c-27.1 0-27.1 23.9-27.1 27.1v271.9a27.1 27.1 0 0 0 27.1 27.1c15.0 0 27.8-16.6 42.5-31.2l77.9-77.9c76.6 67.7 177.1 108.9 287.4 108.9 221.7 0 404.5-166.0 431.2-380.6h-109.8c-25.9 154.2-159.7 271.9-321.3 271.9zM919.9 76.6c-15.0 0-27.8 16.6-42.5 31.3L799.5 185.8c-76.5-67.7-177.1-108.9-287.4-108.9-221.8 0-404.5 166.1-431.3 380.6H190.6c25.9-154.2 159.7-271.9 321.4-271.9 80.2 0 153.4 29.3 210.1 77.4l-75.5 75.5c-11.6 11.5-25.8 22.0-25.8 37.1a27.2 27.2 0 0 0 27.1 27.1h271.9c27.1 0 27.1-23.9 27.1-27.1V103.8a27.1 27.1 0 0 0-27.1-27.1z" />
+                    </StackPanel>
+                    <Grid Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="1" HorizontalAlignment="Stretch">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <local:MyTextBox x:Name="TextDshNodePath" Grid.Column="0" local:SettingService.Key="DshNodePath"
+                                         ToolTip="留空表示自动检测。填写时请指向 node.exe 的完整路径。" />
+                        <local:MyButton x:Name="BtnDshNodeBrowse" Grid.Column="1" Text="浏览" Margin="8,0,0,0" Height="28" Padding="13,0" />
+                        <local:MyButton x:Name="BtnDshNodeClear" Grid.Column="2" Text="清除" Margin="8,0,0,0" Height="28" Padding="13,0" />
+                    </Grid>
+
+                    <!-- pnpm 检测 -->
+                    <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,0,25,0" VerticalAlignment="Center">
+                        <TextBlock Text="pnpm 路径" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <Grid Grid.Row="4" Grid.Column="1" HorizontalAlignment="Stretch">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <local:MyTextBox x:Name="TextDshPnpmPath" Grid.Column="0" local:SettingService.Key="DshPnpmPath"
+                                         ToolTip="留空表示自动检测。pnpm 只在安装阶段用到，DSH 启动后不再依赖它。" />
+                        <local:MyButton x:Name="BtnDshPnpmBrowse" Grid.Column="1" Text="浏览" Margin="8,0,0,0" Height="28" Padding="13,0" />
+                        <local:MyButton x:Name="BtnDshPnpmClear" Grid.Column="2" Text="清除" Margin="8,0,0,0" Height="28" Padding="13,0" />
+                    </Grid>
+
+                    <!-- DSH 安装目录 -->
+                    <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,0,25,0" VerticalAlignment="Center">
+                        <TextBlock Text="DSH 安装目录" VerticalAlignment="Center" />
+                        <local:MyIconButton Height="23" Margin="5,1,0,0" x:Name="BtnDshInstallOpen" VerticalAlignment="Center" ToolTip="打开目录"
+                                            LogoScale="0.85" Theme="Black"
+                                            Logo="M144.9 96h734.2c26.5 0 48 21.5 48 48v736c0 26.5-21.5 48-48 48H144.9c-26.5 0-48-21.5-48-48V144c0-26.5 21.5-48 48-48z m48 96v640h638.2V192H192.9z M287.4 384h449.2v64H287.4v-64z m0 160h449.2v64H287.4v-64z" />
+                    </StackPanel>
+                    <Grid Grid.Row="6" Grid.Column="1" HorizontalAlignment="Stretch">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <local:MyTextBox x:Name="TextDshInstallPath" Grid.Column="0" local:SettingService.Key="DshInstallPath"
+                                         ToolTip="留空表示使用 PCL 缓存目录下的默认位置。" />
+                        <local:MyButton x:Name="BtnDshInstallBrowse" Grid.Column="1" Text="浏览" Margin="8,0,0,0" Height="28" Padding="13,0" />
+                    </Grid>
+
+                    <!-- 界面打开方式 -->
+                    <TextBlock Grid.Row="8" VerticalAlignment="Center" HorizontalAlignment="Left" Text="界面打开方式" Margin="0,8,25,0" />
+                    <Grid Grid.Row="8" Grid.Column="1" Margin="0,8,0,0">
+                        <StackPanel>
+                            <!-- 两个单选框并排；之前竖着排，看着像两个互不相关的设置 -->
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                <local:MyRadioBox local:SettingService.Key="DshBrowserType" local:SettingService.Value="0"
+                                                  Text="系统默认浏览器" x:Name="RadioDshBrowserSystem" Margin="0,0,22,0"
+                                                  ToolTip="交给 Windows 处理，最省事也最可靠。" />
+                                <local:MyRadioBox local:SettingService.Key="DshBrowserType" local:SettingService.Value="1"
+                                                  Text="指定浏览器" x:Name="RadioDshBrowserCustom"
+                                                  ToolTip="自己挑一个浏览器，并可以附加启动参数（例如 --app 变成独立窗口）。" />
+                            </StackPanel>
+                            <Grid x:Name="PanDshBrowserCustom" Margin="0,2,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="1*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="8" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="8" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid Grid.Row="0" Grid.ColumnSpan="2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="1*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <local:MyComboBox x:Name="ComboDshBrowser" Grid.Column="0" />
+                                    <local:MyButton x:Name="BtnDshBrowserRescan" Grid.Column="1" Text="重新扫描" Margin="8,0,0,0" Height="28" Padding="13,0"
+                                                    ToolTip="扫描常见浏览器的标准安装位置，找到的会列入上方下拉框。" />
+                                </Grid>
+                                <local:MyTextBox x:Name="TextDshBrowserPath" Grid.Row="2" Grid.ColumnSpan="2" local:SettingService.Key="DshBrowserPath"
+                                                 ToolTip="浏览器可执行文件的完整路径。选择上方下拉项时会自动填入。" />
+                                <local:MyTextBox x:Name="TextDshBrowserArgs" Grid.Row="4" Grid.ColumnSpan="2" local:SettingService.Key="DshBrowserArgs"
+                                                 ToolTip="可选。传给浏览器的附加参数。&#xa;&#xa;用 {url} 代表 DSH 地址，例如：&#xa; · --incognito {url} ：以无痕模式打开&#xa; · --app={url} ：以应用模式打开（无地址栏，接近原生窗口）&#xa;&#xa;留空则直接把地址作为唯一参数。" />
+                            </Grid>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- 启动行为 -->
+                    <StackPanel Grid.Row="10" Grid.ColumnSpan="2" HorizontalAlignment="Left" VerticalAlignment="Center">
+                        <local:MyCheckBox Height="28" Text="启动完成后自动打开界面" local:SettingService.Key="DshBrowserAutoOpen"
+                                          ToolTip="关闭后，服务仍会正常启动，只是不会自动弹出浏览器窗口。" />
+                    </StackPanel>
+
+                    <!-- 端口 -->
+                    <TextBlock Grid.Row="12" VerticalAlignment="Center" HorizontalAlignment="Left" Text="监听端口" Margin="0,0,25,0" />
+                    <Grid Grid.Row="12" Grid.Column="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="120" />
+                            <ColumnDefinition Width="1*" />
+                        </Grid.ColumnDefinitions>
+                        <local:MyTextBox x:Name="TextDshPort" Grid.Column="0" local:SettingService.Key="DshPort" HintText="0"
+                                         ToolTip="填 0 表示自动选择空闲端口（推荐）。只有在需要固定地址时才手动指定。" />
+                        <TextBlock Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center" FontSize="12" Opacity="0.6"
+                                   Foreground="{DynamicResource ColorBrushGray3}" Text="0 = 自动选择空闲端口" />
+                    </Grid>
+
+                    <!-- 额外参数 -->
+                    <TextBlock Grid.Row="14" VerticalAlignment="Center" HorizontalAlignment="Left" Text="额外启动参数" Margin="0,0,25,0" />
+                    <local:MyTextBox x:Name="TextDshExtraArgs" Grid.Row="14" Grid.Column="1" local:SettingService.Key="DshExtraArgs"
+                                     ToolTip="追加到 dsh 命令行末尾的参数，留空即可。仅在排查问题时使用。" />
+                </Grid>
+            </local:MyCard>
+            <local:MyCard x:Name="CardDshMaintenance" Margin="0,0,0,15" Title="维护与修复" CanSwap="True" IsSwapped="True">
+                <StackPanel Margin="25,40,25,15">
+                    <local:MyHint Margin="0,0,0,12" Theme="Blue"
+                                  Text="DSH 的运行时（Node、pnpm、dsh 本体）放在私有目录里，与实例数据分开存放。升级或重装运行时不会影响任何实例的配置、会话与插件。" />
+
+                    <!-- 体检报告 -->
+                    <TextBlock Margin="0,0,0,8" FontSize="13" FontWeight="Bold"
+                               Foreground="{DynamicResource ColorBrush1}" Text="环境体检" />
+                    <TextBlock x:Name="LabDshHealth" FontSize="12.5" TextWrapping="Wrap" LineHeight="20"
+                               Margin="0,0,0,10" Foreground="{DynamicResource ColorBrushGray4}"
+                               Text="还没有体检。点「检查环境」看一份报告。" />
+                    <StackPanel Orientation="Horizontal">
+                        <local:MyButton x:Name="BtnDshCheckEnv" Text="检查环境" Margin="0,0,10,0" ColorType="Highlight"
+                                        ToolTip="检查 Node / pnpm / dsh 本体 / 实例数据 / 端口占用，并给出一句话结论。" />
+                        <local:MyButton x:Name="BtnDshRepair" Text="一键修复" Margin="0,0,10,0"
+                                        ToolTip="自动修好体检报告里标记为「可修复」的问题。不会删除任何已有实例数据（历史遗留目录除外，那个会先提示）。" />
+                        <local:MyButton x:Name="BtnDshUpdateAll" Text="一键更新"
+                                        ToolTip="把 Node、pnpm、dsh 本体、已装插件都升到当前更新通道对应的最新版本。" />
+                    </StackPanel>
+
+                    <!-- 数据目录 -->
+                    <TextBlock Margin="0,20,0,8" FontSize="13" FontWeight="Bold"
+                               Foreground="{DynamicResource ColorBrush1}" Text="数据目录" />
+                    <TextBlock x:Name="LabDshDiskUsage" FontSize="12.5" TextWrapping="Wrap" LineHeight="20"
+                               Margin="0,0,0,10" Foreground="{DynamicResource ColorBrushGray4}"
+                               Text="正在统计磁盘占用……" />
+                    <StackPanel Orientation="Horizontal">
+                        <local:MyButton x:Name="BtnOpenDshRoot" Text="打开数据目录" Margin="0,0,10,0"
+                                        ToolTip="打开 PCL DSH 的数据根目录，里面是 runtime（共享运行时）与 instances（各实例数据）。" />
+                        <local:MyButton x:Name="BtnDshMigrate" Text="迁移数据目录" Margin="0,0,10,0"
+                                        ToolTip="把整个数据目录搬到别的盘（例如从 C 盘换到 D 盘）。支持跨盘，搬完 PCL 会自动改用新位置。" />
+                        <local:MyButton x:Name="BtnDshMigrateBack" Text="恢复到默认位置" Margin="0,0,10,0"
+                                        ToolTip="把数据目录搬回出厂默认位置（系统临时目录下的 PCL\DSH）。搬过盘之后想搬回来时用。" />
+                        <local:MyButton x:Name="BtnCheckDshUpdate" Text="镜像版本"
+                                        ToolTip="跳到「下载 → 镜像版本」，可以查看并安装任意版本的 dsh。升级不会影响实例数据。" />
+                        <local:MyButton x:Name="BtnRefreshDshUsage" Text="刷新占用" Margin="10,0,0,0" />
+                    </StackPanel>
+
+                    <!-- 从其他 dsh 环境同步 -->
+                    <TextBlock Margin="0,20,0,8" FontSize="13" FontWeight="Bold"
+                               Foreground="{DynamicResource ColorBrush1}" Text="从其他 dsh 环境同步" />
+                    <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="20"
+                               Margin="0,0,0,10" Foreground="{DynamicResource ColorBrushGray4}"
+                               Text="如果你另有一份手工搭好的 dsh 环境（例如用户目录下的 .dsh），可以把里面的插件、API Key 和 profile 配置搬到某个 PCL 实例里，省得重新配一遍。&#x0a;注意：dsh 环境目录里只有数据、没有程序本体，所以这里不搬 dsh 版本 —— 要连版本一起搬，用「下载 → 镜像版本 → 运行时」里的「导入运行时」。" />
+                    <StackPanel Orientation="Horizontal">
+                        <local:MyButton x:Name="BtnDshSyncFromEnv" Text="从其他环境导入…" ColorType="Highlight"
+                                        ToolTip="选一个 dsh 环境目录，把它的插件和 API Key 同步到指定实例。" />
+                    </StackPanel>
+                    <TextBlock x:Name="LabDshSyncNote" Margin="0,8,0,0" FontSize="11.5" TextWrapping="Wrap"
+                               LineHeight="19" Foreground="{DynamicResource ColorBrushGray4}" />
+
+                    <!-- 插件市场数据源 -->
+                    <TextBlock Margin="0,20,0,8" FontSize="13" FontWeight="Bold"
+                               Foreground="{DynamicResource ColorBrush1}" Text="插件市场数据源" />
+                    <local:MyHint Margin="0,0,0,10" Theme="Blue"
+                                  Text="索引站收录 4000+ 个插件、带分类与中文简介，且是静态文件没有请求次数限制；GitHub 只取一页 50 个，匿名接口每小时限 10 次，适合作为索引站不可用时的回退。" />
+                    <local:MyCheckBox x:Name="CheckDshPluginUseCdn" Height="28" Text="使用插件索引站（awesome-dsh-plugin.com）"
+                                      local:SettingService.Key="DshPluginUseCdn"
+                                      ToolTip="勾选 = 走索引站（推荐，4000+ 插件、无配额）。取消勾选 = 走 GitHub topic:dsh-plugin（只有 50 个、受配额限制）。更改后到「下载 → 插件社区」刷新一次列表即可生效。" />
+                    <TextBlock x:Name="LabDshPluginSourceNote" FontSize="11.5" TextWrapping="Wrap" LineHeight="19"
+                               Margin="0,6,0,0" Foreground="{DynamicResource ColorBrushGray4}"
+                               Text="当前：插件索引站 · 缓存有效期 30 秒" />
+                </StackPanel>
+            </local:MyCard>
+
+            <!-- 首次运行引导（非强制，可关闭） -->
+            <local:MyCard x:Name="CardDshFirstRun" Margin="0,0,0,15" Title="第一次使用？" CanSwap="True" IsSwapped="False">
+                <StackPanel Margin="25,40,25,15">
+                    <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="21"
+                               Foreground="{DynamicResource ColorBrushGray4}"
+                               Text="PCL DSH 是一个「启动器兼文件管理器」：dsh 的对话界面在浏览器里打开，PCL 负责把服务拉起来、管实例、管插件、管密钥。&#xa;&#xa;三步就能用起来：" />
+                    <StackPanel Margin="0,10,0,0">
+                        <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="21" Margin="0,0,0,6"
+                                   Foreground="{DynamicResource ColorBrushGray4}"
+                                   Text="① 展开上面的「维护与修复」，点「检查环境」——没有 Node / pnpm / dsh 的话，点「一键修复」自动装好，不需要你手动配置任何东西。" />
+                        <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="21" Margin="0,0,0,6"
+                                   Foreground="{DynamicResource ColorBrushGray4}"
+                                   Text="② 在「设置 → 模型接入方式」里填一个 DeepSeek API Key，然后给实例挑一个接入方式。" />
+                        <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="21"
+                                   Foreground="{DynamicResource ColorBrushGray4}"
+                                   Text="③ 回到「启动」页点「启动实例」，dsh 会在浏览器里自动打开。" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                        <local:MyButton x:Name="BtnDshGuideGo" Text="带我做一遍" Margin="0,0,10,0" ColorType="Highlight"
+                                        ToolTip="立即开始体检，缺什么就装什么。" />
+                        <local:MyButton x:Name="BtnDshGuideDismiss" Text="知道了，不再显示" />
+                    </StackPanel>
+                </StackPanel>
+            </local:MyCard>
+        </StackPanel>
+    </local:MyScrollViewer>
+</local:MyPageRight>

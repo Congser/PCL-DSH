@@ -1,0 +1,44 @@
+<local:MyPageRight
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:PCL"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d" x:Class="PageDSHEnv"
+    PanScroll="PanBack">
+    <local:MyScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" x:Name="PanBack">
+        <StackPanel x:Name="PanMain" Margin="25,25,25,10">
+
+            <local:MyCard Title="运行时探测结果" Margin="0,0,0,15">
+                <StackPanel Margin="20,36,18,18">
+                    <TextBlock FontSize="13" TextWrapping="Wrap" Foreground="{DynamicResource ColorBrushGray2}"
+                               Text="PCL DSH 优先复用你电脑上已有的 Node 与 pnpm；若不合格，会自动装配到下面的私有目录，不会修改系统 PATH。" />
+                    <TextBlock x:Name="LabOverall" Margin="0,12,0,0" FontSize="13" FontWeight="Bold" TextWrapping="Wrap" />
+                    <TextBlock x:Name="LabNode" Margin="0,12,0,0" FontSize="13" TextWrapping="Wrap" />
+                    <TextBlock x:Name="LabPnpm" Margin="0,8,0,0" FontSize="13" TextWrapping="Wrap" />
+                    <TextBlock x:Name="LabDsh" Margin="0,8,0,0" FontSize="13" TextWrapping="Wrap" />
+                </StackPanel>
+            </local:MyCard>
+
+            <local:MyCard Title="私有运行时目录" Margin="0,0,0,15">
+                <StackPanel Margin="20,36,18,18">
+                    <TextBlock x:Name="LabPaths" FontSize="12.5" TextWrapping="Wrap" LineHeight="20"
+                               FontFamily="Consolas, Microsoft YaHei UI" Foreground="{DynamicResource ColorBrushGray2}" />
+                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                        <local:MyButton x:Name="BtnDetect" Text="重新探测" Margin="0,0,10,0" />
+                        <local:MyButton x:Name="BtnReinstall" Text="重新装配运行时" ColorType="Highlight" Margin="0,0,10,0" />
+                        <local:MyButton x:Name="BtnOpenPrivate" Text="打开目录" />
+                    </StackPanel>
+                </StackPanel>
+            </local:MyCard>
+
+            <local:MyCard Title="说明" Margin="0,0,0,15">
+                <StackPanel Margin="20,36,18,18">
+                    <TextBlock FontSize="13" TextWrapping="Wrap" LineHeight="21" Foreground="{DynamicResource ColorBrushGray2}"
+                               Text="· Node 要求满足 ^22.19.0 或 >=24.0.0，这是 dsh 在 package.json 中声明的 engines 约束。&#x0a;· pnpm 用于安装 dsh 本体及其依赖；dsh 启动后不再依赖 pnpm。&#x0a;· 首次装配需要下载约 117MB 依赖（含 LibreOffice 组件），通常耗时 15～20 分钟，请保持网络畅通。&#x0a;· 装配过程可以在「运行日志」页面实时查看。" />
+                </StackPanel>
+            </local:MyCard>
+
+        </StackPanel>
+    </local:MyScrollViewer>
+</local:MyPageRight>

@@ -1,0 +1,114 @@
+<local:MyPageRight x:Class="PageOtherTest"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="clr-namespace:PCL"
+    xmlns:sys="clr-namespace:System;assembly=mscorlib"
+    PanScroll="PanBack">
+    <!--
+        PCL_DSH：网络工具箱（原「百宝箱」的位置）。
+
+        做三件事：
+          1. IP 优选 —— 多源 DNS 拿候选 IP，TCP 测速挑最快，写进 hosts 加速
+          2. 镜像站 —— 反代可用性测速与跳转
+          3. 网络诊断 —— DNS / TCP / TLS / HTTP 全链路逐项耗时
+
+        为什么不做 SteamTools 那种本地反代 + 自签证书 MITM：
+        本工程是 .NET Framework 4.8 + 老式 vbproj + 无 NuGet，拿不到 YARP；
+        自研 MITM 要装根证书、改系统代理，代价与风险都远高于收益。
+        而 GitHub 场景下「IP 优选」本来就是 SteamTools 的加速主力手段，
+        且不需要证书、不需要改系统代理。
+    -->
+    <Grid>
+        <local:MyScrollViewer x:Name="PanBack" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="25,25,25,25">
+
+                <!-- 卡片 1：IP 优选与 hosts 加速 -->
+                <local:MyCard Title="GitHub 加速（IP 优选 + hosts）" Margin="0,0,0,15">
+                    <StackPanel Margin="20,36,18,18">
+                        <TextBlock FontSize="13" TextWrapping="Wrap" LineHeight="21"
+                                   Foreground="{DynamicResource ColorBrushGray2}"
+                                   Text="GitHub 的 CDN 节点很多，不同网络能连通的节点差异极大。这里会从多个 DNS 源收集候选 IP，逐个做 TCP 握手测速，挑出当前网络最快的那个，写进 hosts 让系统直连。整个过程不需要证书、不需要改系统代理。" />
+
+                        <TextBlock x:Name="LabAdminStatus" Margin="0,12,0,0" FontSize="12.5" TextWrapping="Wrap" />
+
+                        <TextBlock Text="要加速的域名" FontSize="12" Opacity="0.6" Margin="0,16,0,6" />
+                        <StackPanel x:Name="PanTargets" />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                            <local:MyButton x:Name="BtnOptimize" Text="开始优选" ColorType="Highlight" Margin="0,0,10,0"
+                                            ToolTip="解析候选 IP 并逐个测速，只显示结果，不改动系统。" />
+                            <local:MyButton x:Name="BtnApplyHosts" Text="应用到 hosts" Margin="0,0,10,0"
+                                            ToolTip="把优选结果写进 hosts 的受管区块。需要管理员权限，会弹一次 UAC。" />
+                            <local:MyButton x:Name="BtnRestoreHosts" Text="还原 hosts" Margin="0,0,10,0"
+                                            ToolTip="删掉受管区块，其余内容原样保留。需要管理员权限。" />
+                            <local:MyButton x:Name="BtnOpenHosts" Text="查看 hosts 文件" />
+                        </StackPanel>
+
+                        <TextBlock x:Name="LabHostsState" Margin="0,12,0,0" FontSize="12" TextWrapping="Wrap"
+                                   FontFamily="Consolas, Microsoft YaHei UI" Foreground="{DynamicResource ColorBrushGray4}" />
+
+                        <TextBlock Text="优选结果" FontSize="12" Opacity="0.6" Margin="0,16,0,6" />
+                        <StackPanel x:Name="PanOptimizeResult" />
+                    </StackPanel>
+                </local:MyCard>
+
+                <!-- 卡片 2：镜像站 -->
+                <local:MyCard Title="镜像站（反代与 CDN）" Margin="0,0,0,15">
+                    <StackPanel Margin="20,36,18,18">
+                        <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="20"
+                                   Foreground="{DynamicResource ColorBrushGray4}"
+                                   Text="镜像只解决「连不上」的问题，不解决配额。GitHub 的搜索接口按 IP 计匿名额度，走反代照样消耗。" />
+
+                        <TextBlock Text="要打开的 GitHub 地址" FontSize="12" Opacity="0.6" Margin="0,14,0,6" />
+                        <local:MyTextBox x:Name="TextGithubUrl" Height="30"
+                                         HintText="https://github.com/deepseek-ai/deepseek-harness" />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <local:MyButton x:Name="BtnProbeMirrors" Text="全部测速" ColorType="Highlight" Margin="0,0,10,0" />
+                            <local:MyButton x:Name="BtnResetMirrors" Text="恢复默认镜像列表" />
+                        </StackPanel>
+
+                        <StackPanel x:Name="PanMirrors" Margin="0,14,0,0" />
+                    </StackPanel>
+                </local:MyCard>
+
+                <!-- 卡片 3：网络诊断 -->
+                <local:MyCard Title="网络诊断" Margin="0,0,0,15">
+                    <StackPanel Margin="20,36,18,18">
+                        <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="20"
+                                   Foreground="{DynamicResource ColorBrushGray4}"
+                                   Text="按 DNS → TCP 握手 → TLS 握手 → 目标地址 四步分别计时。这样能看出到底卡在哪一环：DNS 慢就换 DNS，TCP 不通就得做 IP 优选，TLS 慢通常是被干扰，HTTP 慢则是服务端的问题。" />
+
+                        <TextBlock Text="诊断目标" FontSize="12" Opacity="0.6" Margin="0,14,0,6" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="280" />
+                                <ColumnDefinition Width="1*" />
+                            </Grid.ColumnDefinitions>
+                            <local:MyComboBox x:Name="ComboDiagTarget" Grid.Column="0" />
+                            <local:MyButton x:Name="BtnDiagnose" Grid.Column="1" Text="开始诊断" ColorType="Highlight"
+                                            HorizontalAlignment="Left" Margin="12,0,0,0" />
+                        </Grid>
+
+                        <StackPanel x:Name="PanDiag" Margin="0,14,0,0" />
+                    </StackPanel>
+                </local:MyCard>
+
+            </StackPanel>
+        </local:MyScrollViewer>
+
+        <!-- 加载中 -->
+        <local:MyCard x:Name="PanLoad" Visibility="Collapsed"
+                      HorizontalAlignment="Center" VerticalAlignment="Center" Margin="40,0"
+                      SnapsToDevicePixels="True" UseAnimation="False">
+            <StackPanel Margin="20,20,20,17">
+                <local:MyLoading x:Name="LoadStart" Text="正在处理" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <TextBlock x:Name="LoadHintText" Margin="0,12,0,0" FontSize="12.5" MaxWidth="440" TextAlignment="Center" TextWrapping="Wrap"
+                           HorizontalAlignment="Center" Foreground="{DynamicResource ColorBrushGray4}"
+                           Text="正在测速……" />
+            </StackPanel>
+        </local:MyCard>
+    </Grid>
+</local:MyPageRight>

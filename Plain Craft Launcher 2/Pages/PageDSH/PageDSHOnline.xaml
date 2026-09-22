@@ -1,0 +1,63 @@
+<local:MyPageRight
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:PCL"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d" x:Class="PageDSHOnline">
+    <!--
+        PCL_DSH：启动页右栏 —— 模型接入方式。
+
+        模型是「一个 provider 列表 + 每个实例各选一个」：
+          · 列表第一项永远是官方 API（不可删）
+          · 其余是用户自己加的自定义网关，可以有任意多个
+          · 每个 provider 有自己的凭据名，密钥互不覆盖，切换不用重输
+
+        配置写到哪里：
+          · provider 列表（不含密钥）→ DSH_ROOT/providers.json
+          · 端点与协议 → 实例的 settings.yaml 的 llm-deepseek 分节
+          · 密钥       → 实例的 .credentials.yaml 的 refs 段
+        官方 provider 不写 settings 分节（删掉即回到 dsh 内置默认值）。
+    -->
+    <Grid>
+        <local:MyScrollViewer x:Name="PanContent" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="25,25,25,25">
+
+                <!-- 接入方式列表 -->
+                <local:MyCard Title="模型接入方式" Margin="0,0,0,15">
+                    <StackPanel Margin="20,36,18,18">
+                        <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="20"
+                                   Foreground="{DynamicResource ColorBrushGray4}"
+                                   Text="这里配置「可以用哪些 API」。配好之后，在下面给每个实例挑一个即可。每种接入方式有各自的密钥，互不覆盖，来回切换不需要重新粘贴。" />
+
+                        <StackPanel x:Name="PanProviders" Margin="0,14,0,0" />
+                        <local:MyButton x:Name="BtnAddProvider" Text="添加自定义网关" Margin="0,4,0,0" HorizontalAlignment="Left" />
+                    </StackPanel>
+                </local:MyCard>
+
+                <!-- 各实例的接入方式 -->
+                <local:MyCard Title="各实例的接入方式" Margin="0,0,0,15">
+                    <StackPanel Margin="20,36,18,18">
+                        <TextBlock FontSize="12.5" TextWrapping="Wrap" LineHeight="20"
+                                   Foreground="{DynamicResource ColorBrushGray4}"
+                                   Text="每个实例有独立的配置文件，所以接入方式是逐个设置的。改完立刻生效，不需要重启服务。" />
+                        <StackPanel x:Name="PanInstances" Margin="0,14,0,0" />
+                        <local:MyButton x:Name="BtnRefresh" Text="刷新" Margin="0,4,0,0" HorizontalAlignment="Left" />
+                    </StackPanel>
+                </local:MyCard>
+
+            </StackPanel>
+        </local:MyScrollViewer>
+
+        <!-- 加载中 -->
+        <local:MyCard x:Name="PanLoad" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center"
+                      Margin="40,0" SnapsToDevicePixels="True" UseAnimation="False">
+            <StackPanel Margin="20,20,20,17">
+                <local:MyLoading x:Name="LoadStart" Text="正在处理" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <TextBlock x:Name="LoadHintText" Margin="0,12,0,0" FontSize="12.5" MaxWidth="420" TextAlignment="Center" TextWrapping="Wrap"
+                           HorizontalAlignment="Center" Foreground="{DynamicResource ColorBrushGray4}"
+                           Text="正在测试连接……" />
+            </StackPanel>
+        </local:MyCard>
+    </Grid>
+</local:MyPageRight>
