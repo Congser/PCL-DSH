@@ -160,8 +160,7 @@ Public Module DshRuntime
     ''' 记录哪些 <see cref="ProcessStartInfo"/> 已经灌过环境（幂等用）。
     ''' </summary>
     ''' <remarks>
-    ''' ⚠️ 用 <see cref="ConditionalWeakTable(Of TKey, TValue)"/> 而不是
-    ''' <c>HashSet(Of ProcessStartInfo)</c>：
+    ''' ⚠️ 用 <c>ConditionalWeakTable</c> 而不是 <c>HashSet(Of ProcessStartInfo)</c>：
     ''' 后者持有**强引用**，而这里的 key 是每次启动/装插件时 new 出来的局部
     ''' <c>ProcessStartInfo</c> —— 用完就没人引用了，但 HashSet 会把它一直钉住，
     ''' 永久阻止 GC（虽然单个对象只有几百字节、操作也低频，但这是纯粹的浪费，

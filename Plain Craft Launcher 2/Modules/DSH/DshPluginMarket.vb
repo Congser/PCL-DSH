@@ -1355,11 +1355,7 @@ Public Module DshPluginMarket
     '''
     ''' 解析方式：找到第一个 <c>add</c> 之后的**第一个 token**。
     ''' 不去理解 spec 的语法（那归 pnpm 管），原样搬过来最不容易出错。
-    ''' </remarks>
-    ''' <summary>
-    ''' 从索引站给的 <c>dsh plugin ... add &lt;spec&gt;</c> 命令里抠出 spec。
-    ''' </summary>
-    ''' <remarks>
+    '''
     ''' ⚠️ 两个必须处理的实测坑：
     ''' <list type="number">
     ''' <item>
