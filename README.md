@@ -1,3 +1,16 @@
+> # 📦 本仓库已归档
+>
+> **归档原因：因个人原因，插件暂停更新，源码继续公开。**
+>
+> 仓库已设为**只读**（不再接受 issue / PR / 推送），但源码、文档与历史版本
+> 仍然可以自由查看、克隆、fork 与使用。
+>
+> 最后发布版本：[v1.3.1](https://github.com/Congser/PCL-DSH/releases/tag/v1.3.1)
+>
+> 感谢每一位使用和反馈过的人。
+
+---
+
 # Plain Craft Launcher (PCL) · DSH 改版
 
 > 把 **DeepSeek Harness (`dsh`)** 装进图形界面的启动器。
